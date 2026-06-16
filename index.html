@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#7ec8e3" />
+  <title>Tiny World — a little planet to wander</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%237ec8e3'/><circle cx='38' cy='44' r='16' fill='%238fd98f'/><circle cx='66' cy='60' r='12' fill='%238fd98f'/></svg>" />
+
+  <!-- Zero-build: pull Three.js + addons straight from a CDN via an import map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "simplex-noise": "https://unpkg.com/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- The WebGL canvas lives here -->
+  <div id="app"></div>
+
+  <!-- Loading screen -->
+  <div id="loading" class="overlay">
+    <div class="loader-inner">
+      <div class="planet-spinner">
+        <div class="planet-spinner__orb"></div>
+        <div class="planet-spinner__moon"></div>
+      </div>
+      <div class="loader-text">Spinning up a little world…</div>
+      <div class="loader-bar"><div id="loader-fill" class="loader-bar__fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Start / title screen -->
+  <div id="start" class="overlay hidden">
+    <div class="start-panel">
+      <h1 class="title">Tiny&nbsp;World</h1>
+      <p class="subtitle">A little planet to wander. Collect the glowing gems, watch the sun go round.</p>
+
+      <div class="customize">
+        <h2>Make your wanderer</h2>
+        <div class="customize-row">
+          <span class="customize-label">Body</span>
+          <div id="swatches-body" class="swatches"></div>
+        </div>
+        <div class="customize-row">
+          <span class="customize-label">Accent</span>
+          <div id="swatches-accent" class="swatches"></div>
+        </div>
+        <div class="customize-row">
+          <span class="customize-label">Hat</span>
+          <div id="hat-picker" class="hat-picker"></div>
+        </div>
+      </div>
+
+      <button id="play-btn" class="play-btn">Play</button>
+
+      <div class="controls-legend">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+        <span><kbd>Space</kbd> jump</span>
+        <span><kbd>Mouse</kbd> look</span>
+        <span><kbd>Shift</kbd> sprint</span>
+      </div>
+    </div>
+    <div class="credits">made with three.js · procedurally generated · no two worlds alike</div>
+  </div>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-top-left">
+      <div class="gem-counter">
+        <span class="gem-icon">◆</span>
+        <span id="gem-count">0</span>
+      </div>
+      <div id="time-of-day" class="time-of-day">
+        <span id="tod-icon">☀️</span>
+        <span id="tod-label">Day 1 · Morning</span>
+      </div>
+    </div>
+
+    <div class="hud-top-right">
+      <button id="customize-btn" class="icon-btn" title="Customize (C)">🎨</button>
+      <button id="mute-btn" class="icon-btn" title="Mute (M)">🔊</button>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- On-screen joystick for touch devices -->
+    <div id="joystick" class="joystick hidden">
+      <div id="joystick-thumb" class="joystick__thumb"></div>
+    </div>
+    <button id="jump-btn" class="jump-btn hidden">↑</button>
+
+    <div id="hint" class="hint">Wander toward a glowing gem to collect it ✦</div>
+  </div>
+
+  <!-- In-game customize panel (reuses the same swatch system) -->
+  <div id="customize-panel" class="overlay hidden">
+    <div class="start-panel compact">
+      <h2>Customize</h2>
+      <div class="customize">
+        <div class="customize-row">
+          <span class="customize-label">Body</span>
+          <div id="swatches-body-2" class="swatches"></div>
+        </div>
+        <div class="customize-row">
+          <span class="customize-label">Accent</span>
+          <div id="swatches-accent-2" class="swatches"></div>
+        </div>
+        <div class="customize-row">
+          <span class="customize-label">Hat</span>
+          <div id="hat-picker-2" class="hat-picker"></div>
+        </div>
+      </div>
+      <button id="customize-close" class="play-btn">Done</button>
+    </div>
+  </div>
+
+  <noscript>
+    <div class="overlay"><div class="start-panel"><h1>Tiny World</h1>
+    <p>This game needs JavaScript and WebGL enabled.</p></div></div>
+  </noscript>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
