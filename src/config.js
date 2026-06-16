@@ -20,6 +20,9 @@ export const CONFIG = {
     sprintMultiplier: 1.8, // run ≈ 15.5 u/s
     turnSpeed: 9.0,       // body rotation stiffness (exp smoothing)
     airControl: 0.7,      // how much input can steer momentum mid-air (low = momentum-led)
+    maxClimbAngle: 50,    // degrees — slopes steeper than this can't be walked up
+    groundStiffness: 12,  // exp-smoothing rate for standing height & up-vector
+    slopeEps: 0.05,       // macro normal/slope sampling offset (ignores single facets)
     jumpStrength: 9.0,
     gravity: 22.0,
     eyeHeight: 1.5,
