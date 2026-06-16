@@ -30,6 +30,9 @@ export class Controller {
     this.grounded = true;
     this.speed01 = 0;                       // normalised speed for animation
     this._stepAccum = 0;
+    this._momentumDir = new THREE.Vector3();// horizontal momentum carried into jumps
+    this._momentumSpeed = 0;                // angular speed of that momentum
+    this._moveVec = new THREE.Vector3();    // reused scratch for input direction
 
     this.input = { f: 0, s: 0, sprint: false, jumpQueued: false };
     this.touch = { active: false, x: 0, y: 0 };
@@ -161,31 +164,59 @@ export class Controller {
   }
 
   update(dt, elapsed) {
-    const moveDir = this._moveVector(new THREE.Vector3());
+    const moveDir = this._moveVector(this._moveVec);
     const up = this.position;
+    const sprintMul = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
+    const inputAngSpeed = moveDir ? CONFIG.player.walkSpeed * (this._inputMag || 1) * sprintMul : 0;
 
-    if (moveDir && this.enabled) {
-      const sprintMul = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
-      // analog magnitude lets a half-pushed joystick walk slowly; keyboard = full
-      const speedFactor = (this._inputMag || 1) * sprintMul;   // walk ≈ 1, run ≈ 2
-      const ang = CONFIG.player.walkSpeed * speedFactor * dt;
-      // rotate position & heading forward along the great circle toward moveDir
-      const axis = new THREE.Vector3().crossVectors(up, moveDir).normalize();
+    // Decide the direction/speed we actually travel this frame.
+    let effDir = null;
+    let effAngSpeed = 0;
+
+    if (this.grounded) {
+      // Full control on the ground; remember it as momentum for any jump.
+      if (moveDir) {
+        effDir = moveDir;
+        effAngSpeed = inputAngSpeed;
+        this._momentumDir.copy(moveDir);
+        this._momentumSpeed = inputAngSpeed;
+      } else {
+        this._momentumSpeed = 0;
+      }
+    } else if (this._momentumSpeed > 1e-4) {
+      // Airborne: keep takeoff momentum. Input may *nudge* the heading a little
+      // (limited air control) but can't fully reverse direction or change speed.
+      if (moveDir) {
+        const steer = Math.min(1, CONFIG.player.airControl * dt);
+        this._momentumDir.lerp(moveDir, steer);
+        this._momentumDir.addScaledVector(up, -this._momentumDir.dot(up)).normalize();
+      }
+      effDir = this._momentumDir;
+      effAngSpeed = this._momentumSpeed;
+    }
+
+    if (effDir && this.enabled) {
+      const ang = effAngSpeed * dt;
+      // rotate position, heading and the momentum vector along the great circle
+      const axis = new THREE.Vector3().crossVectors(up, effDir).normalize();
       this._quat.setFromAxisAngle(axis, ang);
       this.position.applyQuaternion(this._quat).normalize();
       this.heading.applyQuaternion(this._quat);
+      this._momentumDir.applyQuaternion(this._quat);
       this._orthonormalize();
 
-      // face the travel direction (re-evaluate moveDir in the new frame)
-      this.facing.copy(moveDir).addScaledVector(this.position, -moveDir.dot(this.position)).normalize();
-      this.speed01 = speedFactor;
+      // face the travel direction (re-projected into the new tangent plane)
+      this.facing.copy(effDir).addScaledVector(this.position, -effDir.dot(this.position)).normalize();
+      this.speed01 = effAngSpeed / CONFIG.player.walkSpeed;
 
-      // footstep cadence + dust — paced to the stride (matches leg footfalls)
-      this._stepAccum += dt * (2.7 * speedFactor);
-      if (this._stepAccum > 1 && this.grounded) {
-        this._stepAccum = 0;
-        if (this.audio) this.audio.footstep();
-        if (this._onStep) this._onStep(this._worldPos.clone(), this._normal.clone());
+      // footstep cadence + dust — only while on the ground
+      if (this.grounded) {
+        this._stepAccum += dt * (4.8 * this.speed01);
+        if (this._stepAccum > 1) {
+          this._stepAccum = 0;
+          if (this.audio) this.audio.footstep();
+          if (this._onStep) this._onStep(this._worldPos.clone(), this._normal.clone());
+        }
       }
     } else {
       this.speed01 = 0;

@@ -15,9 +15,10 @@ export const CONFIG = {
 
   // --- player --------------------------------------------------------------
   player: {
-    walkSpeed: 0.18,      // radians/sec across the surface (~3.8 u/s — a walk)
-    sprintMultiplier: 2.0, // run ≈ 7.6 u/s
+    walkSpeed: 0.4,       // radians/sec across the surface (~8.4 u/s — a brisk walk)
+    sprintMultiplier: 1.8, // run ≈ 15 u/s
     turnSpeed: 9.0,       // body rotation stiffness (exp smoothing)
+    airControl: 0.7,      // how much input can steer momentum mid-air (low = momentum-led)
     jumpStrength: 9.0,
     gravity: 22.0,
     eyeHeight: 1.5,
