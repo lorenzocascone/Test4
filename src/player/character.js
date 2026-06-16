@@ -133,7 +133,7 @@ export class Character {
   update(dt, elapsed, speed) {
     const amp = Math.min(speed, 1);
     // advance the stride phase by cadence ∝ speed (constant stride length)
-    this.walkPhase += dt * 8.5 * speed;
+    this.walkPhase += dt * 15 * speed;
     const swing = Math.sin(this.walkPhase) * 0.85 * amp;
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
