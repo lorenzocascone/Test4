@@ -68,7 +68,8 @@ export const CONFIG = {
 
 // Curated swatch sets for the character customizer.
 export const CUSTOMIZE = {
-  body: ['#ff8fab', '#ffd166', '#8ecae6', '#a0e57b', '#c79bff', '#ff9b6a', '#ffffff', '#5b6b7b'],
-  accent: ['#3a3a4a', '#ffffff', '#ff5d8f', '#ffd166', '#3a8fd0', '#5bbf7a'],
+  // skin tones first (goblin greens), then fun colours
+  body: ['#8ab84e', '#5f9a3e', '#a9cf6b', '#7bbf9a', '#c7b27a', '#ff8fab', '#8ecae6', '#c79bff'],
+  accent: ['#7a4a2b', '#3a3a4a', '#9a2f2f', '#3a8fd0', '#5bbf5a', '#ffd166'],
   hats: ['none', 'cap', 'cone', 'crown', 'leaf'],
 };

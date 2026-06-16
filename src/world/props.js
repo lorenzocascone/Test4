@@ -6,6 +6,7 @@
 // ----------------------------------------------------------------------------
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { fibonacciSphere, alignToNormal } from '../utils/math.js';
 
@@ -26,8 +27,9 @@ function mulberry32(seed) {
 }
 
 export class Props {
-  constructor(planet, seed = 7) {
+  constructor(planet, seed = 7, { mobile = false } = {}) {
     this.planet = planet;
+    this.mobile = mobile;
     this.rng = mulberry32(seed);
     this.group = new THREE.Group();
     this.group.name = 'props';
@@ -40,9 +42,13 @@ export class Props {
   }
 
   // Find valid land placements: above sea level, not too steep, not too high.
-  _placements(count, { maxElev = 0.78, minElev = 0.0, maxSlope = 0.45 } = {}) {
+  // `minDist` (radians) enforces a minimum spacing so things don't pile up.
+  _placements(count, { maxElev = 0.78, minElev = 0.0, maxSlope = 0.45, minDist = 0 } = {}) {
     const out = [];
-    const dirs = fibonacciSphere(count * 3, this.rng); // oversample then filter
+    const accepted = [];
+    const over = minDist > 0 ? 6 : 3;            // oversample more when rejecting
+    const cosMin = minDist > 0 ? Math.cos(minDist) : 2;
+    const dirs = fibonacciSphere(count * over, this.rng);
     const cfg = CONFIG.planet;
     for (const dir of dirs) {
       if (out.length >= count) break;
@@ -53,6 +59,14 @@ export class Props {
       const normal = this.planet.normalAt(dir, 0.02);
       const slope = 1 - normal.dot(dir);
       if (slope > maxSlope) continue;
+      if (minDist > 0) {
+        let tooClose = false;
+        for (let a = 0; a < accepted.length; a++) {
+          if (accepted[a].dot(dir) > cosMin) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        accepted.push(dir);
+      }
       out.push({ dir, r, normal, elev });
     }
     return out;
@@ -96,55 +110,105 @@ export class Props {
     material.customProgramCacheKey = () => key;
   }
 
+  // A few tree archetypes so the forest reads as varied, not one pointy mass.
+  // Each foliage is a single merged geometry (higher poly, rounded) baked at its
+  // real height above y=0 so it drops straight onto the trunk's transform.
+  _treeArchetypes() {
+    const fd = this.mobile ? 1 : 2;               // canopy icosphere detail
+    const tube = (rBot, rTop, h, y, seg = 8) => {
+      const g = new THREE.CylinderGeometry(rTop, rBot, h, seg);
+      g.translate(0, y, 0); return g;
+    };
+    const ball = (r, x, y, z) => {
+      const g = new THREE.IcosahedronGeometry(r, fd);
+      g.translate(x, y, z); return g;
+    };
+    const cone = (r, h, y, seg = 10) => {
+      const g = new THREE.ConeGeometry(r, h, seg);
+      g.translate(0, y, 0); return g;
+    };
+
+    return [
+      { // broadleaf — bushy rounded canopy
+        weight: 0.40, scale: [1.5, 1.4],
+        trunk: tube(0.18, 0.13, 1.3, 0.65),
+        foliage: mergeGeometries([ball(0.95, 0, 1.78, 0), ball(0.72, 0.5, 1.52, 0.1), ball(0.72, -0.46, 1.56, -0.12), ball(0.62, 0.08, 2.12, 0.18)]),
+        greens: ['#5bbf5a', '#6cc36a', '#4fa64a', '#79c75a'],
+      },
+      { // pine — stacked conifer tiers
+        weight: 0.26, scale: [1.7, 1.6],
+        trunk: tube(0.16, 0.12, 1.1, 0.55),
+        foliage: mergeGeometries([cone(0.98, 1.4, 1.2), cone(0.74, 1.2, 1.95), cone(0.5, 1.05, 2.62)]),
+        greens: ['#3f8f4f', '#357a45', '#48994f'],
+      },
+      { // bush — squat, trunkless
+        weight: 0.20, scale: [1.0, 0.9],
+        trunk: null,
+        foliage: mergeGeometries([ball(0.55, 0, 0.45, 0), ball(0.46, 0.4, 0.35, 0.08), ball(0.46, -0.36, 0.38, -0.1)]),
+        greens: ['#6cc36a', '#79c75a', '#8ad06a'],
+      },
+      { // birch — tall, slim, pale trunk, small crown
+        weight: 0.14, scale: [1.7, 1.3], trunkColor: '#d6cdb8',
+        trunk: tube(0.12, 0.085, 2.0, 1.0),
+        foliage: mergeGeometries([ball(0.74, 0, 2.2, 0), ball(0.56, 0.26, 2.55, 0.1)]),
+        greens: ['#9ad06a', '#a9cf6b', '#88c25a'],
+      },
+    ];
+  }
+
   _buildTrees() {
-    const places = this._placements(CONFIG.props.trees, { maxElev: 0.7, maxSlope: 0.4 });
+    const archetypes = this._treeArchetypes();
+    const places = this._placements(CONFIG.props.trees, { maxElev: 0.72, maxSlope: 0.4, minDist: 0.055 });
+
+    // distribute placements across archetypes by weight
+    const buckets = archetypes.map(() => []);
+    for (const p of places) {
+      let r = this.rng(), idx = archetypes.length - 1;
+      for (let w = 0; w < archetypes.length; w++) { if (r < archetypes[w].weight) { idx = w; break; } r -= archetypes[w].weight; }
+      buckets[idx].push(p);
+    }
+    archetypes.forEach((arch, ai) => this._buildTreeType(arch, buckets[ai]));
+  }
+
+  _buildTreeType(arch, places) {
     const n = places.length;
-
-    // Trunk
-    const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 1, 6);
-    trunkGeo.translate(0, 0.5, 0);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: '#8a5a3b', flatShading: true, roughness: 1 });
-    const trunk = new THREE.InstancedMesh(trunkGeo, trunkMat, n);
-
-    // Foliage — stacked cones
-    const leafGeo = new THREE.ConeGeometry(0.9, 1.6, 7);
-    const leafMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 });
-    const leaves = new THREE.InstancedMesh(leafGeo, leafMat, n);
-    const leafColors = new Float32Array(n * 3);
-
-    const greens = ['#4fa64a', '#3f8f4f', '#5bbf5a', '#6cc36a', '#48994f'];
+    if (n === 0) return;
     const col = new THREE.Color();
+
+    let trunk = null;
+    if (arch.trunk) {
+      const trunkMat = new THREE.MeshStandardMaterial({ color: arch.trunkColor || '#8a5a3b', flatShading: true, roughness: 1 });
+      trunk = new THREE.InstancedMesh(arch.trunk, trunkMat, n);
+      trunk.castShadow = true; trunk.receiveShadow = true;
+    }
+    const foliageMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 });
+    const foliage = new THREE.InstancedMesh(arch.foliage, foliageMat, n);
+    foliage.castShadow = true; foliage.receiveShadow = true;
+    const colors = new Float32Array(n * 3);
 
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
       const forward = new THREE.Vector3(p.dir.y, -p.dir.x, p.dir.z).normalize();
       alignToNormal(p.normal, forward, _quat);
-      const s = 1.6 + this.rng() * 1.8; // taller trees that tower over the player
-
-      _scale.set(s, s * (0.9 + this.rng() * 0.4), s);
+      _tmpQuat.setFromAxisAngle(p.normal, this.rng() * Math.PI * 2); // random yaw
+      _quat.premultiply(_tmpQuat);
+      const s = arch.scale[0] + this.rng() * arch.scale[1];
+      _scale.set(s, s * (0.92 + this.rng() * 0.25), s);
       _mat4.compose(_pos, _quat, _scale);
-      trunk.setMatrixAt(i, _mat4);
-
-      // foliage sits atop the trunk
-      const top = _pos.clone().addScaledVector(p.normal, s * 1.0);
-      _scale.set(s, s, s);
-      _mat4.compose(top, _quat, _scale);
-      leaves.setMatrixAt(i, _mat4);
-
-      col.set(greens[(this.rng() * greens.length) | 0]);
-      leafColors[i * 3] = col.r; leafColors[i * 3 + 1] = col.g; leafColors[i * 3 + 2] = col.b;
+      if (trunk) trunk.setMatrixAt(i, _mat4);
+      foliage.setMatrixAt(i, _mat4);
+      col.set(arch.greens[(this.rng() * arch.greens.length) | 0]);
+      colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
     }
-    leafGeo.setAttribute('color', new THREE.InstancedBufferAttribute(leafColors, 3));
-    leafGeo.setAttribute('aPhase', this._phaseAttr(n));
-    this._applyWind(leafMat, 0.05);
 
-    trunk.castShadow = true; leaves.castShadow = true;
-    trunk.receiveShadow = true; leaves.receiveShadow = true;
-    trunk.instanceMatrix.needsUpdate = true;
-    leaves.instanceMatrix.needsUpdate = true;
+    arch.foliage.setAttribute('color', new THREE.InstancedBufferAttribute(colors, 3));
+    arch.foliage.setAttribute('aPhase', this._phaseAttr(n));
+    this._applyWind(foliageMat, 0.04);
 
-    this.group.add(trunk, leaves);
+    if (trunk) { trunk.instanceMatrix.needsUpdate = true; this.group.add(trunk); }
+    foliage.instanceMatrix.needsUpdate = true;
+    this.group.add(foliage);
   }
 
   _buildRocks() {

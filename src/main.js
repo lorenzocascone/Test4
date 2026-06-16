@@ -100,7 +100,7 @@ class Game {
       CONFIG.props.flowers = Math.round(CONFIG.props.flowers * 0.5);
       CONFIG.props.trees = Math.round(CONFIG.props.trees * 0.75);
     }
-    this.props = new Props(this.planet, seed ^ 0x5a5a);
+    this.props = new Props(this.planet, seed ^ 0x5a5a, { mobile: this.isMobile });
     this.scene.add(this.props.group);
 
     await step(0.7, 'Hanging the sky…');
