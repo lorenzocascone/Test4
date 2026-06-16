@@ -1,7 +1,8 @@
 // ----------------------------------------------------------------------------
 // Scattered scenery: trees, rocks, flowers and grass tufts placed on the land
 // and oriented to the surface normal. Uses InstancedMesh for performance.
-// Foliage gets a gentle wind sway in the update loop.
+// Foliage wind sway runs entirely on the GPU (a vertex-shader offset), so the
+// per-frame CPU cost is just advancing one uniform — smooth even on mobile.
 // ----------------------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -9,14 +10,10 @@ import { CONFIG } from '../config.js';
 import { fibonacciSphere, alignToNormal } from '../utils/math.js';
 
 const _pos = new THREE.Vector3();
-const _norm = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _mat4 = new THREE.Matrix4();
-const _swayQuat = new THREE.Quaternion();
 const _tmpQuat = new THREE.Quaternion();
-const _baseQuat = new THREE.Quaternion();
-const _axis = new THREE.Vector3();
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -34,7 +31,7 @@ export class Props {
     this.rng = mulberry32(seed);
     this.group = new THREE.Group();
     this.group.name = 'props';
-    this.swayables = []; // { mesh, baseMatrices, axisList, phaseList }
+    this.windUniforms = { uTime: { value: 0 } }; // shared by all foliage materials
 
     this._buildTrees();
     this._buildRocks();
@@ -61,29 +58,42 @@ export class Props {
     return out;
   }
 
-  // Record each instance's base transform (decomposed) plus a local sway axis &
-  // phase so update() can wobble them cheaply without per-frame allocation.
-  _registerSway(mesh, placements, intensity) {
-    const count = placements.length;
-    const basePos = new Float32Array(count * 3);
-    const baseQuat = new Float32Array(count * 4);
-    const baseScale = new Float32Array(count * 3);
-    const swayAxis = new Float32Array(count * 3); // local-space axis
-    const phase = new Float32Array(count);
-    const m = new THREE.Matrix4();
-    const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+  // Per-instance random wind phase, so foliage doesn't sway in lockstep.
+  _phaseAttr(count) {
+    const arr = new Float32Array(count);
+    for (let i = 0; i < count; i++) arr[i] = this.rng() * Math.PI * 2;
+    return new THREE.InstancedBufferAttribute(arr, 1);
+  }
 
-    for (let i = 0; i < count; i++) {
-      mesh.getMatrixAt(i, m);
-      m.decompose(p, q, s);
-      basePos[i * 3] = p.x; basePos[i * 3 + 1] = p.y; basePos[i * 3 + 2] = p.z;
-      baseQuat[i * 4] = q.x; baseQuat[i * 4 + 1] = q.y; baseQuat[i * 4 + 2] = q.z; baseQuat[i * 4 + 3] = q.w;
-      baseScale[i * 3] = s.x; baseScale[i * 3 + 1] = s.y; baseScale[i * 3 + 2] = s.z;
-      // sway tilts around the local X axis (instances are modelled +Y up)
-      swayAxis[i * 3] = 1; swayAxis[i * 3 + 1] = 0; swayAxis[i * 3 + 2] = 0;
-      phase[i] = this.rng() * Math.PI * 2;
-    }
-    this.swayables.push({ mesh, count, basePos, baseQuat, baseScale, swayAxis, phase, intensity });
+  // Inject a cheap GPU wind sway: top of the model (local +Y) leans on a sine
+  // wave. `yBias` lifts small/centred geometry (flower heads) so they move too.
+  _applyWind(material, intensity, yBias = 0) {
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.windUniforms.uTime;
+      shader.uniforms.uWind = { value: intensity };
+      shader.uniforms.uYBias = { value: yBias };
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           attribute float aPhase;
+           uniform float uTime;
+           uniform float uWind;
+           uniform float uYBias;`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           float _h = max(position.y, 0.0) + uYBias;
+           transformed.x += sin(uTime * 1.6 + aPhase) * uWind * _h;
+           transformed.z += cos(uTime * 1.3 + aPhase) * uWind * 0.5 * _h;`
+        );
+    };
+    // Unique cache key per wind material so three compiles a distinct program
+    // (running onBeforeCompile + its own uniforms) and never reuses a non-wind
+    // program from an identical-looking material (rocks/trunks/stems).
+    const key = `tinyworld-wind-${intensity}-${yBias}`;
+    material.customProgramCacheKey = () => key;
   }
 
   _buildTrees() {
@@ -126,6 +136,8 @@ export class Props {
       leafColors[i * 3] = col.r; leafColors[i * 3 + 1] = col.g; leafColors[i * 3 + 2] = col.b;
     }
     leafGeo.setAttribute('color', new THREE.InstancedBufferAttribute(leafColors, 3));
+    leafGeo.setAttribute('aPhase', this._phaseAttr(n));
+    this._applyWind(leafMat, 0.05);
 
     trunk.castShadow = true; leaves.castShadow = true;
     trunk.receiveShadow = true; leaves.receiveShadow = true;
@@ -133,7 +145,6 @@ export class Props {
     leaves.instanceMatrix.needsUpdate = true;
 
     this.group.add(trunk, leaves);
-    this._registerSway(leaves, places, 0.06);
   }
 
   _buildRocks() {
@@ -206,10 +217,12 @@ export class Props {
       colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
     }
     headGeo.setAttribute('color', new THREE.InstancedBufferAttribute(colors, 3));
+    headGeo.setAttribute('aPhase', this._phaseAttr(n));
+    this._applyWind(headMat, 0.12, 0.4); // yBias lifts the centred head so it bobs
+
     stems.instanceMatrix.needsUpdate = true;
     heads.instanceMatrix.needsUpdate = true;
     this.group.add(stems, heads);
-    this._registerSway(heads, places, 0.1);
   }
 
   _buildGrass() {
@@ -236,28 +249,16 @@ export class Props {
       colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
     }
     geo.setAttribute('color', new THREE.InstancedBufferAttribute(colors, 3));
+    geo.setAttribute('aPhase', this._phaseAttr(n));
+    this._applyWind(mat, 0.16);
+
     grass.instanceMatrix.needsUpdate = true;
     grass.receiveShadow = true;
     this.group.add(grass);
-    this._registerSway(grass, places, 0.14);
   }
 
-  update(dt, elapsed, windDir = 1) {
-    // Gentle wind sway: tilt each foliage instance around its local axis.
-    for (const sway of this.swayables) {
-      const { mesh, count, basePos, baseQuat, baseScale, swayAxis, phase, intensity } = sway;
-      for (let i = 0; i < count; i++) {
-        const angle = Math.sin(elapsed * 1.6 + phase[i]) * intensity * windDir;
-        _axis.set(swayAxis[i * 3], swayAxis[i * 3 + 1], swayAxis[i * 3 + 2]);
-        _swayQuat.setFromAxisAngle(_axis, angle);
-        _baseQuat.set(baseQuat[i * 4], baseQuat[i * 4 + 1], baseQuat[i * 4 + 2], baseQuat[i * 4 + 3]);
-        _quat.copy(_baseQuat).multiply(_swayQuat);
-        _pos.set(basePos[i * 3], basePos[i * 3 + 1], basePos[i * 3 + 2]);
-        _scale.set(baseScale[i * 3], baseScale[i * 3 + 1], baseScale[i * 3 + 2]);
-        _mat4.compose(_pos, _quat, _scale);
-        mesh.setMatrixAt(i, _mat4);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-    }
+  update(dt, elapsed) {
+    // All sway happens on the GPU — just advance the shared wind clock.
+    this.windUniforms.uTime.value = elapsed;
   }
 }

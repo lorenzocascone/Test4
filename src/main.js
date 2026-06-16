@@ -37,6 +37,10 @@ class Game {
   }
 
   async init() {
+    // Lower-power devices (phones/tablets) get a lighter render path for a
+    // stable framerate — the other half of the "jerky" fix.
+    this.isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+      && Math.min(window.innerWidth, window.innerHeight) < 900;
     this._setupRenderer();
     this._setupScene();
     await this._buildWorld();
@@ -58,7 +62,7 @@ class Game {
 
   _setupRenderer() {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -89,6 +93,11 @@ class Game {
     this.scene.add(this.water.mesh);
 
     await step(0.5, 'Planting forests…');
+    if (this.isMobile) {
+      CONFIG.props.grass = Math.round(CONFIG.props.grass * 0.4);
+      CONFIG.props.flowers = Math.round(CONFIG.props.flowers * 0.5);
+      CONFIG.props.trees = Math.round(CONFIG.props.trees * 0.75);
+    }
     this.props = new Props(this.planet, seed ^ 0x5a5a);
     this.scene.add(this.props.group);
 
@@ -99,7 +108,7 @@ class Game {
     this.scene.add(this.clouds.group);
 
     await step(0.82, 'Lighting the sun…');
-    this.dayNight = new DayNight(this.scene, this.sky, CONFIG.planet.radius);
+    this.dayNight = new DayNight(this.scene, this.sky, CONFIG.planet.radius, this.isMobile);
 
     await step(0.92, 'Scattering gems…');
     this.particles = new Particles(700);
@@ -120,7 +129,10 @@ class Game {
     );
     this.composer.addPass(this.bloom);
 
-    this.composer.addPass(new SMAAPass(window.innerWidth * this.renderer.getPixelRatio(), window.innerHeight * this.renderer.getPixelRatio()));
+    // SMAA is the priciest pass — skip it on mobile for a stable framerate.
+    if (!this.isMobile) {
+      this.composer.addPass(new SMAAPass(window.innerWidth * this.renderer.getPixelRatio(), window.innerHeight * this.renderer.getPixelRatio()));
+    }
     this.composer.addPass(new OutputPass());
   }
 

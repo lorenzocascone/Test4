@@ -144,14 +144,19 @@ export class Controller {
   _moveVector(out) {
     let f = this.input.f, s = this.input.s;
     if (this.touch.active) { f = this.touch.y; s = this.touch.x; }
-    if (Math.abs(f) < 0.01 && Math.abs(s) < 0.01) return null;
+    // small deadzone so a resting stick / tiny drift doesn't creep
+    const mag = Math.hypot(f, s);
+    if (mag < 0.15) return null;
 
     const up = this.position;
     // camera-facing tangent = heading rotated by camYaw around up
     const camFwd = this.heading.clone().applyAxisAngle(up, this.camYaw);
-    const right = new THREE.Vector3().crossVectors(up, camFwd).normalize();
+    // screen-right of the camera (cross(viewDir, up)); previously inverted
+    const right = new THREE.Vector3().crossVectors(camFwd, up).normalize();
     out.copy(camFwd).multiplyScalar(f).addScaledVector(right, s);
     if (out.lengthSq() < 1e-6) return null;
+    // analog magnitude (clamped) so a half-pushed stick walks slower
+    this._inputMag = Math.min(mag, 1);
     return out.normalize();
   }
 
@@ -160,8 +165,10 @@ export class Controller {
     const up = this.position;
 
     if (moveDir && this.enabled) {
-      const sprint = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
-      const ang = CONFIG.player.walkSpeed * sprint * dt;
+      const sprintMul = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
+      // analog magnitude lets a half-pushed joystick walk slowly; keyboard = full
+      const speedFactor = (this._inputMag || 1) * sprintMul;   // walk ≈ 1, run ≈ 2
+      const ang = CONFIG.player.walkSpeed * speedFactor * dt;
       // rotate position & heading forward along the great circle toward moveDir
       const axis = new THREE.Vector3().crossVectors(up, moveDir).normalize();
       this._quat.setFromAxisAngle(axis, ang);
@@ -171,10 +178,10 @@ export class Controller {
 
       // face the travel direction (re-evaluate moveDir in the new frame)
       this.facing.copy(moveDir).addScaledVector(this.position, -moveDir.dot(this.position)).normalize();
-      this.speed01 = sprint;
+      this.speed01 = speedFactor;
 
-      // footstep cadence + dust
-      this._stepAccum += dt * (this.input.sprint ? 11 : 8);
+      // footstep cadence + dust — paced to the stride (matches leg footfalls)
+      this._stepAccum += dt * (2.7 * speedFactor);
       if (this._stepAccum > 1 && this.grounded) {
         this._stepAccum = 0;
         if (this.audio) this.audio.footstep();
@@ -209,10 +216,12 @@ export class Controller {
     const standPos = this._worldPos.clone().addScaledVector(this._normal, this.altitude);
     this.character.root.position.copy(standPos);
 
-    // orient body: up = terrain normal, face = facing tangent
+    // orient body: up = terrain normal, face = facing tangent.
+    // Frame-rate-independent exponential smoothing avoids snapping/jerk.
     alignToNormal(this._normal, this.facing, this._targetQuat);
     if (dt > 0) {
-      this.character.root.quaternion.slerp(this._targetQuat, Math.min(1, CONFIG.player.turnSpeed * dt));
+      const t = 1 - Math.exp(-CONFIG.player.turnSpeed * dt);
+      this.character.root.quaternion.slerp(this._targetQuat, t);
     } else {
       this.character.root.quaternion.copy(this._targetQuat);
     }
@@ -230,7 +239,9 @@ export class Controller {
 
   _updateCamera(dt) {
     this._computeDesiredCamera(this._desiredCam);
-    this.camera.position.lerp(this._desiredCam, dt > 0 ? CONFIG.camera.damping * 12 * Math.min(dt, 0.05) / 0.05 : 1);
+    // exponential smoothing — independent of framerate, no stutter on mobile
+    const t = dt > 0 ? 1 - Math.exp(-CONFIG.camera.followStiffness * dt) : 1;
+    this.camera.position.lerp(this._desiredCam, t);
     this._camTarget.copy(this._worldPos).addScaledVector(this.position, CONFIG.player.eyeHeight);
     this.camera.up.copy(this.position);
     this.camera.lookAt(this._camTarget);
