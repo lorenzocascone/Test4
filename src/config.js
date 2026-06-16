@@ -5,18 +5,19 @@
 export const CONFIG = {
   // --- planet --------------------------------------------------------------
   planet: {
-    radius: 20,           // base sea-level-ish radius
-    detail: 48,           // icosphere subdivisions (higher = smoother, heavier)
-    maxElevation: 3.4,    // how far land rises above the base radius
-    seaLevel: 0.18,       // fraction of maxElevation that counts as water
-    noiseScale: 1.5,      // frequency of continents
+    radius: 32,           // base sea-level-ish radius (bigger world, smaller-feeling player)
+    detail: 60,           // icosphere subdivisions (higher = smoother, heavier)
+    maxElevation: 9.0,    // how far land rises above the base radius (dramatic relief)
+    seaLevel: 0.16,       // fraction of maxElevation that counts as water
+    elevationPower: 1.5,  // >1 carves valleys & sharpens peaks (less "flat")
+    noiseScale: 1.9,      // frequency of continents
     octaves: 5,           // fractal detail
   },
 
   // --- player --------------------------------------------------------------
   player: {
-    walkSpeed: 0.4,       // radians/sec across the surface (~8.4 u/s — a brisk walk)
-    sprintMultiplier: 1.8, // run ≈ 15 u/s
+    walkSpeed: 0.27,      // radians/sec (≈8.6 u/s on the bigger globe — a brisk walk)
+    sprintMultiplier: 1.8, // run ≈ 15.5 u/s
     turnSpeed: 9.0,       // body rotation stiffness (exp smoothing)
     airControl: 0.7,      // how much input can steer momentum mid-air (low = momentum-led)
     jumpStrength: 9.0,
@@ -26,8 +27,8 @@ export const CONFIG = {
 
   // --- camera --------------------------------------------------------------
   camera: {
-    distance: 11,
-    height: 5.5,
+    distance: 13,
+    height: 6.5,
     followStiffness: 9,   // higher = snappier follow (exp smoothing, fps-independent)
     fov: 55,
     lookSensitivity: 0.0042,
@@ -35,14 +36,14 @@ export const CONFIG = {
 
   // --- world dressing ------------------------------------------------------
   props: {
-    trees: 150,
-    rocks: 90,
-    flowers: 260,
-    grass: 900,
+    trees: 300,
+    rocks: 170,
+    flowers: 440,
+    grass: 1700,
   },
-  clouds: 26,
+  clouds: 34,
   collectibles: {
-    count: 14,
+    count: 20,
     pickupRadius: 2.2,
     respawnDelay: 2.5,    // seconds
   },

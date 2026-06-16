@@ -54,7 +54,7 @@ export class Planet {
     let h = this._field(dir);              // -1..1
     h = (h + 1) * 0.5;                     // 0..1
     // Push lowlands down and raise peaks for nicer continents.
-    h = Math.pow(h, 1.25);
+    h = Math.pow(h, this.cfg.elevationPower ?? 1.25);
     const land = Math.max(h, this.cfg.seaLevel); // water flattens to sea level
     return this.cfg.radius + land * this.cfg.maxElevation;
   }
