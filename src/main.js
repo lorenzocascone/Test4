@@ -84,6 +84,8 @@ class Game {
     const step = (p, text) => new Promise((r) => { this._setLoader(p, text); requestAnimationFrame(() => setTimeout(r, 16)); });
 
     const seed = randSeed();
+    // Lighter terrain mesh on mobile (same shape, fewer facets) to keep it smooth.
+    if (this.isMobile) CONFIG.planet.detail = 46;
     await step(0.1, 'Sculpting continents…');
     this.planet = new Planet(seed);
     this.scene.add(this.planet.mesh);

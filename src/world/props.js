@@ -120,7 +120,7 @@ export class Props {
       this.planet.surfacePoint(p.dir, _pos);
       const forward = new THREE.Vector3(p.dir.y, -p.dir.x, p.dir.z).normalize();
       alignToNormal(p.normal, forward, _quat);
-      const s = 0.8 + this.rng() * 0.9;
+      const s = 1.6 + this.rng() * 1.8; // taller trees that tower over the player
 
       _scale.set(s, s * (0.9 + this.rng() * 0.4), s);
       _mat4.compose(_pos, _quat, _scale);
@@ -173,7 +173,7 @@ export class Props {
       _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.normal);
       _tmpQuat.setFromAxisAngle(p.normal, this.rng() * Math.PI * 2);
       _quat.multiply(_tmpQuat);
-      const s = 0.5 + this.rng() * 1.2;
+      const s = 0.7 + this.rng() * 2.0; // range from pebbles to big boulders
       _scale.set(s, s * (0.7 + this.rng() * 0.5), s);
       _mat4.compose(_pos, _quat, _scale);
       rocks.setMatrixAt(i, _mat4);
