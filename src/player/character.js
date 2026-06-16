@@ -90,6 +90,7 @@ export class Character {
 
     this._blink = 0;
     this._blinkTimer = 2 + Math.random() * 3;
+    this.walkPhase = 0;
   }
 
   setBodyColor(hex) { this.bodyMat.color.set(hex); }
@@ -126,25 +127,28 @@ export class Character {
     if (hat) { hat.traverse(o => { if (o.isMesh) o.castShadow = true; }); this.hatSlot.add(hat); }
   }
 
-  // speed in 0..1 (normalised). Drives the walk cycle.
+  // `speed` is the movement factor (0 idle, ≈1 walk, ≈2 run). Drives the walk
+  // cycle: stride cadence is proportional to speed so footfalls match the
+  // ground (no sliding), while swing amplitude is capped.
   update(dt, elapsed, speed) {
-    const s = Math.min(speed, 1);
-    const freq = 9;
-    const swing = Math.sin(elapsed * freq) * 0.9 * s;
+    const amp = Math.min(speed, 1);
+    // advance the stride phase by cadence ∝ speed (constant stride length)
+    this.walkPhase += dt * 8.5 * speed;
+    const swing = Math.sin(this.walkPhase) * 0.85 * amp;
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
     this.armL.rotation.x = -swing * 0.8;
     this.armR.rotation.x = swing * 0.8;
-    // a little outward arm rest when idle
+    // a little outward arm rest
     this.armL.rotation.z = 0.18;
     this.armR.rotation.z = -0.18;
 
     // body bob & lean
-    const bob = Math.abs(Math.sin(elapsed * freq)) * 0.12 * s;
+    const bob = Math.abs(Math.sin(this.walkPhase)) * 0.12 * amp;
     this.rig.position.y = bob;
-    this.rig.rotation.x = s * 0.06; // lean into the walk
+    this.rig.rotation.x = amp * 0.06; // lean into the walk
     // gentle idle breathing
-    const breathe = Math.sin(elapsed * 2) * 0.02 * (1 - s);
+    const breathe = Math.sin(elapsed * 2) * 0.02 * (1 - amp);
     this.head.position.y = 1.85 + breathe;
 
     // blinking

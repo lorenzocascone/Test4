@@ -36,7 +36,7 @@ function lerpKey(a, b, f, out) {
 }
 
 export class DayNight {
-  constructor(scene, sky, planetRadius) {
+  constructor(scene, sky, planetRadius, mobile = false) {
     this.scene = scene;
     this.sky = sky;
     this.time = CONFIG.startTime;
@@ -54,7 +54,7 @@ export class DayNight {
     // Sun — the key light, casts shadows.
     this.sun = new THREE.DirectionalLight('#fff0d0', 1.2);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
     this.sun.shadow.camera.near = 150;
     this.sun.shadow.camera.far = 320;
     const s = planetRadius * 1.4;

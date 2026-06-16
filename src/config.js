@@ -15,9 +15,9 @@ export const CONFIG = {
 
   // --- player --------------------------------------------------------------
   player: {
-    walkSpeed: 0.9,       // radians/sec-ish across the surface
-    sprintMultiplier: 1.8,
-    turnSpeed: 7.0,       // how fast the body rotates to face travel dir
+    walkSpeed: 0.18,      // radians/sec across the surface (~3.8 u/s — a walk)
+    sprintMultiplier: 2.0, // run ≈ 7.6 u/s
+    turnSpeed: 9.0,       // body rotation stiffness (exp smoothing)
     jumpStrength: 9.0,
     gravity: 22.0,
     eyeHeight: 1.5,
@@ -27,7 +27,7 @@ export const CONFIG = {
   camera: {
     distance: 11,
     height: 5.5,
-    damping: 0.08,
+    followStiffness: 9,   // higher = snappier follow (exp smoothing, fps-independent)
     fov: 55,
     lookSensitivity: 0.0042,
   },
