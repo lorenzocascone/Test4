@@ -26,13 +26,21 @@ export class Controller {
     this.camYaw = 0;                        // extra camera yaw from the mouse
     this.camPitch = 0.18;                   // camera pitch (radians)
     this.jumpVel = 0;
-    this.altitude = 0;                      // height above the terrain
+    this.altitude = 0;                      // height above the takeoff ground (can go negative)
     this.grounded = true;
     this.speed01 = 0;                       // normalised speed for animation
     this._stepAccum = 0;
     this._momentumDir = new THREE.Vector3();// horizontal momentum carried into jumps
     this._momentumSpeed = 0;                // angular speed of that momentum
     this._moveVec = new THREE.Vector3();    // reused scratch for input direction
+
+    // Verticality + smoothing state.
+    this._groundRadius = this.planet.radiusAt(this.position);  // smoothed standing radius
+    this._smoothNormal = this.planet.normalAt(this.position, CONFIG.player.slopeEps);
+    this._jumpBaseRadius = this._groundRadius;
+    this._displayRadius = this._groundRadius;
+    this._candidatePos = new THREE.Vector3();
+    this._cosMaxClimb = Math.cos(THREE.MathUtils.degToRad(CONFIG.player.maxClimbAngle));
 
     this.input = { f: 0, s: 0, sprint: false, jumpQueued: false };
     this.touch = { active: false, x: 0, y: 0 };
@@ -166,6 +174,7 @@ export class Controller {
   update(dt, elapsed) {
     const moveDir = this._moveVector(this._moveVec);
     const up = this.position;
+    const actualRadius = this.planet.radiusAt(this.position);
     const sprintMul = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
     const inputAngSpeed = moveDir ? CONFIG.player.walkSpeed * (this._inputMag || 1) * sprintMul : 0;
 
@@ -197,43 +206,78 @@ export class Controller {
 
     if (effDir && this.enabled) {
       const ang = effAngSpeed * dt;
-      // rotate position, heading and the momentum vector along the great circle
+      // candidate next position along the great circle
       const axis = new THREE.Vector3().crossVectors(up, effDir).normalize();
       this._quat.setFromAxisAngle(axis, ang);
-      this.position.applyQuaternion(this._quat).normalize();
-      this.heading.applyQuaternion(this._quat);
-      this._momentumDir.applyQuaternion(this._quat);
-      this._orthonormalize();
+      this._candidatePos.copy(this.position).applyQuaternion(this._quat).normalize();
 
-      // face the travel direction (re-projected into the new tangent plane)
-      this.facing.copy(effDir).addScaledVector(this.position, -effDir.dot(this.position)).normalize();
-      this.speed01 = effAngSpeed / CONFIG.player.walkSpeed;
-
-      // footstep cadence + dust — only while on the ground
+      // Climb limit: block a grounded step that pushes uphill into a too-steep face.
+      let blocked = false;
       if (this.grounded) {
-        this._stepAccum += dt * (4.8 * this.speed01);
-        if (this._stepAccum > 1) {
-          this._stepAccum = 0;
-          if (this.audio) this.audio.footstep();
-          if (this._onStep) this._onStep(this._worldPos.clone(), this._normal.clone());
+        const candRadius = this.planet.radiusAt(this._candidatePos);
+        if (candRadius > actualRadius + 0.02) { // moving uphill
+          const candNormal = this.planet.normalAt(this._candidatePos, CONFIG.player.slopeEps);
+          if (candNormal.dot(this._candidatePos) < this._cosMaxClimb) blocked = true;
         }
+      }
+
+      if (!blocked) {
+        this.position.copy(this._candidatePos);
+        this.heading.applyQuaternion(this._quat);
+        this._momentumDir.applyQuaternion(this._quat);
+        this._orthonormalize();
+        // face the travel direction (re-projected into the new tangent plane)
+        this.facing.copy(effDir).addScaledVector(this.position, -effDir.dot(this.position)).normalize();
+        this.speed01 = effAngSpeed / CONFIG.player.walkSpeed;
+
+        // footstep cadence + dust — only while on the ground
+        if (this.grounded) {
+          this._stepAccum += dt * (4.8 * this.speed01);
+          if (this._stepAccum > 1) {
+            this._stepAccum = 0;
+            if (this.audio) this.audio.footstep();
+            if (this._onStep) this._onStep(this._worldPos.clone(), this._smoothNormal.clone());
+          }
+        }
+      } else {
+        this.speed01 = 0; // stopped at the foot of the slope
       }
     } else {
       this.speed01 = 0;
     }
 
-    // jump + radial gravity
+    // jump + radial gravity — height is measured from the takeoff ground so the
+    // arc is a clean parabola, not a tracing of the terrain passing underneath.
     if (this.input.jumpQueued && this.grounded) {
       this.jumpVel = CONFIG.player.jumpStrength;
       this.grounded = false;
+      this._jumpBaseRadius = this._groundRadius;
       if (this.audio) this.audio.jump();
     }
     this.input.jumpQueued = false;
-    if (!this.grounded) {
+
+    const k = dt > 0 ? 1 - Math.exp(-CONFIG.player.groundStiffness * dt) : 1;
+    if (this.grounded) {
+      // ease the standing height toward the real terrain → no per-bump bobbing
+      this._groundRadius += (actualRadius - this._groundRadius) * k;
+      this.altitude = 0;
+    } else {
       this.jumpVel -= CONFIG.player.gravity * dt;
-      this.altitude += this.jumpVel * dt;
-      if (this.altitude <= 0) { this.altitude = 0; this.jumpVel = 0; this.grounded = true; }
+      this.altitude += this.jumpVel * dt; // may go negative when falling into a dip
+      const airRadius = this._jumpBaseRadius + this.altitude;
+      if (this.jumpVel <= 0 && airRadius <= actualRadius) {
+        // landed — snap onto whatever ground we actually met (ledge or valley)
+        this.grounded = true;
+        this.jumpVel = 0;
+        this.altitude = 0;
+        this._groundRadius = actualRadius;
+      }
     }
+    this._displayRadius = this.grounded ? this._groundRadius : (this._jumpBaseRadius + this.altitude);
+
+    // smooth the up-vector toward the macro surface normal (ignores facets)
+    const targetNormal = this.planet.normalAt(this.position, CONFIG.player.slopeEps);
+    this._smoothNormal.lerp(targetNormal, k).normalize();
 
     this._syncTransform(dt);
     this.character.update(dt, elapsed, this.speed01);
@@ -241,15 +285,14 @@ export class Controller {
   }
 
   _syncTransform(dt) {
-    // world position on (or above) the terrain
-    this.planet.surfacePoint(this.position, this._worldPos);
-    this._normal.copy(this.planet.normalAt(this.position, 0.02));
-    const standPos = this._worldPos.clone().addScaledVector(this._normal, this.altitude);
-    this.character.root.position.copy(standPos);
+    // Standing/airborne world position uses the smoothed display radius, so the
+    // character (and the camera that follows it) glide instead of riding bumps.
+    this._worldPos.copy(this.position).multiplyScalar(this._displayRadius);
+    this.character.root.position.copy(this._worldPos);
 
-    // orient body: up = terrain normal, face = facing tangent.
+    // orient body: up = smoothed surface normal, face = facing tangent.
     // Frame-rate-independent exponential smoothing avoids snapping/jerk.
-    alignToNormal(this._normal, this.facing, this._targetQuat);
+    alignToNormal(this._smoothNormal, this.facing, this._targetQuat);
     if (dt > 0) {
       const t = 1 - Math.exp(-CONFIG.player.turnSpeed * dt);
       this.character.root.quaternion.slerp(this._targetQuat, t);
@@ -279,6 +322,15 @@ export class Controller {
   }
 
   snapCamera() {
+    // Re-seat the smoothing state on the current (possibly just-set) position so
+    // there's no first-frame pop after a respawn.
+    this.grounded = true;
+    this.altitude = 0;
+    this.jumpVel = 0;
+    this._groundRadius = this.planet.radiusAt(this.position);
+    this._jumpBaseRadius = this._groundRadius;
+    this._displayRadius = this._groundRadius;
+    this._smoothNormal.copy(this.planet.normalAt(this.position, CONFIG.player.slopeEps));
     this._syncTransform(0);
     this._computeDesiredCamera(this._desiredCam);
     this.camera.position.copy(this._desiredCam);
@@ -288,6 +340,6 @@ export class Controller {
   }
 
   get worldPosition() { return this._worldPos; }
-  get surfaceNormal() { return this._normal; }
+  get surfaceNormal() { return this._smoothNormal; }
   onStep(fn) { this._onStep = fn; }
 }
