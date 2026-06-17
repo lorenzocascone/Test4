@@ -42,11 +42,12 @@ export class Props {
   }
 
   // Find valid land placements: above sea level, not too steep, not too high.
-  // `minDist` (radians) enforces a minimum spacing so things don't pile up.
-  _placements(count, { maxElev = 0.78, minElev = 0.0, maxSlope = 0.45, minDist = 0 } = {}) {
+  // `minDist` (radians) enforces spacing; `biomes` (Set) restricts to biomes.
+  // Each placement carries its biome so callers can tint/choose by region.
+  _placements(count, { maxElev = 0.78, minElev = 0.0, maxSlope = 0.45, minDist = 0, biomes = null } = {}) {
     const out = [];
     const accepted = [];
-    const over = minDist > 0 ? 6 : 3;            // oversample more when rejecting
+    const over = (minDist > 0 || biomes) ? 7 : 3;   // oversample more when rejecting
     const cosMin = minDist > 0 ? Math.cos(minDist) : 2;
     const dirs = fibonacciSphere(count * over, this.rng);
     const cfg = CONFIG.planet;
@@ -59,6 +60,8 @@ export class Props {
       const normal = this.planet.normalAt(dir, 0.02);
       const slope = 1 - normal.dot(dir);
       if (slope > maxSlope) continue;
+      const biome = this.planet.biomeAt(dir, r, normal);
+      if (biomes && !biomes.has(biome)) continue;
       if (minDist > 0) {
         let tooClose = false;
         for (let a = 0; a < accepted.length; a++) {
@@ -67,7 +70,7 @@ export class Props {
         if (tooClose) continue;
         accepted.push(dir);
       }
-      out.push({ dir, r, normal, elev });
+      out.push({ dir, r, normal, elev, biome });
     }
     return out;
   }
@@ -110,10 +113,10 @@ export class Props {
     material.customProgramCacheKey = () => key;
   }
 
-  // A few tree archetypes so the forest reads as varied, not one pointy mass.
-  // Each foliage is a single merged geometry (higher poly, rounded) baked at its
-  // real height above y=0 so it drops straight onto the trunk's transform.
-  _treeArchetypes() {
+  // Build a FRESH archetype (geometry + look) by name. Fresh each call so the
+  // same kind can be used in several biome passes without sharing a geometry.
+  // Each foliage is a single merged geometry baked at its real height above y=0.
+  _makeArchetype(name) {
     const fd = this.mobile ? 1 : 2;               // canopy icosphere detail
     const tube = (rBot, rTop, h, y, seg = 8) => {
       const g = new THREE.CylinderGeometry(rTop, rBot, h, seg);
@@ -127,47 +130,79 @@ export class Props {
       const g = new THREE.ConeGeometry(r, h, seg);
       g.translate(0, y, 0); return g;
     };
+    const cap = (r, len, x, y, z, seg = 6) => {
+      const g = new THREE.CapsuleGeometry(r, len, 3, seg);
+      g.translate(x, y, z); return g;
+    };
 
-    return [
-      { // broadleaf — bushy rounded canopy
-        weight: 0.40, scale: [1.5, 1.4],
-        trunk: tube(0.18, 0.13, 1.3, 0.65),
+    switch (name) {
+      case 'broadleaf': return {
+        scale: [1.5, 1.4], trunk: tube(0.18, 0.13, 1.3, 0.65),
         foliage: mergeGeometries([ball(0.95, 0, 1.78, 0), ball(0.72, 0.5, 1.52, 0.1), ball(0.72, -0.46, 1.56, -0.12), ball(0.62, 0.08, 2.12, 0.18)]),
         greens: ['#5bbf5a', '#6cc36a', '#4fa64a', '#79c75a'],
-      },
-      { // pine — stacked conifer tiers
-        weight: 0.26, scale: [1.7, 1.6],
-        trunk: tube(0.16, 0.12, 1.1, 0.55),
+      };
+      case 'pine': return {
+        scale: [1.7, 1.6], trunk: tube(0.16, 0.12, 1.1, 0.55),
         foliage: mergeGeometries([cone(0.98, 1.4, 1.2), cone(0.74, 1.2, 1.95), cone(0.5, 1.05, 2.62)]),
         greens: ['#3f8f4f', '#357a45', '#48994f'],
-      },
-      { // bush — squat, trunkless
-        weight: 0.20, scale: [1.0, 0.9],
-        trunk: null,
+      };
+      case 'bush': return {
+        scale: [1.0, 0.9], trunk: null,
         foliage: mergeGeometries([ball(0.55, 0, 0.45, 0), ball(0.46, 0.4, 0.35, 0.08), ball(0.46, -0.36, 0.38, -0.1)]),
         greens: ['#6cc36a', '#79c75a', '#8ad06a'],
-      },
-      { // birch — tall, slim, pale trunk, small crown
-        weight: 0.14, scale: [1.7, 1.3], trunkColor: '#d6cdb8',
-        trunk: tube(0.12, 0.085, 2.0, 1.0),
+      };
+      case 'birch': return {
+        scale: [1.7, 1.3], trunkColor: '#d6cdb8', trunk: tube(0.12, 0.085, 2.0, 1.0),
         foliage: mergeGeometries([ball(0.74, 0, 2.2, 0), ball(0.56, 0.26, 2.55, 0.1)]),
         greens: ['#9ad06a', '#a9cf6b', '#88c25a'],
-      },
-    ];
+      };
+      case 'snowpine': return { // conifer dusted with snow, near the poles
+        scale: [1.5, 1.3], wind: 0.03, trunkColor: '#6b5640', trunk: tube(0.15, 0.11, 1.0, 0.5),
+        foliage: mergeGeometries([cone(0.95, 1.3, 1.1), cone(0.72, 1.15, 1.8), cone(0.48, 1.0, 2.45)]),
+        greens: ['#e8f0f4', '#d4e4ec', '#cfe0e8', '#bcd4dd'],
+      };
+      case 'cactus': return { // saguaro: a tall body flanked by two arm columns
+        scale: [1.3, 1.1], wind: 0, trunk: null,
+        foliage: mergeGeometries([
+          cap(0.22, 1.4, 0, 0.9, 0),
+          cap(0.11, 0.7, -0.32, 1.15, 0, 5),
+          cap(0.11, 0.7, 0.32, 1.3, 0, 5),
+        ]),
+        greens: ['#5a9e4a', '#4f8f44', '#67a84e'],
+      };
+      default: return this._makeArchetype('broadleaf');
+    }
   }
 
-  _buildTrees() {
-    const archetypes = this._treeArchetypes();
-    const places = this._placements(CONFIG.props.trees, { maxElev: 0.72, maxSlope: 0.4, minDist: 0.055 });
+  _weightedPick(pairs) {
+    let r = this.rng();
+    for (const [name, w] of pairs) { if (r < w) return name; r -= w; }
+    return pairs[pairs.length - 1][0];
+  }
 
-    // distribute placements across archetypes by weight
-    const buckets = archetypes.map(() => []);
-    for (const p of places) {
-      let r = this.rng(), idx = archetypes.length - 1;
-      for (let w = 0; w < archetypes.length; w++) { if (r < archetypes[w].weight) { idx = w; break; } r -= archetypes[w].weight; }
-      buckets[idx].push(p);
+  // Trees, cacti and snowy pines, placed per biome.
+  _buildTrees() {
+    const passes = [
+      { biomes: ['forest'], count: CONFIG.props.trees, minDist: 0.05,
+        pick: () => this._weightedPick([['broadleaf', 0.45], ['pine', 0.33], ['birch', 0.22]]) },
+      { biomes: ['grassland'], count: CONFIG.props.grasslandTrees, minDist: 0.11,
+        pick: () => this._weightedPick([['broadleaf', 0.5], ['bush', 0.5]]) },
+      { biomes: ['tundra', 'snow'], count: CONFIG.props.polarTrees, minDist: 0.08, pick: () => 'snowpine' },
+      { biomes: ['desert'], count: CONFIG.props.cacti, minDist: 0.085, pick: () => 'cactus' },
+    ];
+
+    for (const pass of passes) {
+      const places = this._placements(pass.count, {
+        maxElev: 0.74, maxSlope: 0.42, minDist: pass.minDist, biomes: new Set(pass.biomes),
+      });
+      const byName = new Map();
+      for (const p of places) {
+        const name = pass.pick();
+        if (!byName.has(name)) byName.set(name, []);
+        byName.get(name).push(p);
+      }
+      for (const [name, group] of byName) this._buildTreeType(this._makeArchetype(name), group);
     }
-    archetypes.forEach((arch, ai) => this._buildTreeType(arch, buckets[ai]));
   }
 
   _buildTreeType(arch, places) {
@@ -204,7 +239,7 @@ export class Props {
 
     arch.foliage.setAttribute('color', new THREE.InstancedBufferAttribute(colors, 3));
     arch.foliage.setAttribute('aPhase', this._phaseAttr(n));
-    this._applyWind(foliageMat, 0.04);
+    this._applyWind(foliageMat, arch.wind ?? 0.04);
 
     if (trunk) { trunk.instanceMatrix.needsUpdate = true; this.group.add(trunk); }
     foliage.instanceMatrix.needsUpdate = true;
@@ -227,7 +262,12 @@ export class Props {
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
     const rocks = new THREE.InstancedMesh(geo, mat, n);
     const colors = new Float32Array(n * 3);
-    const greys = ['#9a8d7c', '#857a6c', '#a8a096', '#766c60'];
+    // rock colour set depends on the biome it sits in
+    const palettes = {
+      grey: ['#9a8d7c', '#857a6c', '#a8a096', '#766c60'],
+      sand: ['#c9a86a', '#b89455', '#d8bd86', '#a98748'],   // desert sandstone
+      ice: ['#cdd9e2', '#b9c8d4', '#dde8ef', '#a7b7c4'],    // polar / icy
+    };
     const col = new THREE.Color();
 
     for (let i = 0; i < n; i++) {
@@ -241,7 +281,10 @@ export class Props {
       _scale.set(s, s * (0.7 + this.rng() * 0.5), s);
       _mat4.compose(_pos, _quat, _scale);
       rocks.setMatrixAt(i, _mat4);
-      col.set(greys[(this.rng() * greys.length) | 0]);
+      const set = p.biome === 'desert' ? palettes.sand
+        : (p.biome === 'snow' || p.biome === 'tundra') ? palettes.ice
+        : palettes.grey;
+      col.set(set[(this.rng() * set.length) | 0]);
       colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
     }
     geo.setAttribute('color', new THREE.InstancedBufferAttribute(colors, 3));
@@ -251,7 +294,7 @@ export class Props {
   }
 
   _buildFlowers() {
-    const places = this._placements(CONFIG.props.flowers, { maxElev: 0.5, maxSlope: 0.35 });
+    const places = this._placements(CONFIG.props.flowers, { maxElev: 0.5, maxSlope: 0.35, biomes: new Set(['grassland', 'forest']) });
     const n = places.length;
     // a flower = thin stem + a little disc head (merged via two instanced meshes)
     const stemGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 4);
@@ -290,7 +333,7 @@ export class Props {
   }
 
   _buildGrass() {
-    const places = this._placements(CONFIG.props.grass, { maxElev: 0.55, maxSlope: 0.4 });
+    const places = this._placements(CONFIG.props.grass, { maxElev: 0.55, maxSlope: 0.4, biomes: new Set(['grassland', 'forest']) });
     const n = places.length;
     // a tuft = a tiny squished cone
     const geo = new THREE.ConeGeometry(0.08, 0.32, 4);

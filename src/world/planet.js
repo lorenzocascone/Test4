@@ -16,19 +16,11 @@ export class Planet {
     this.cfg = CONFIG.planet;
     this.noise = new Noise(seed);
     this.warpNoise = new Noise(seed ^ 0x9e3779b9);
+    this.moistNoise = new Noise(seed ^ 0x1b56c4f3);   // independent moisture field
     this.seaRadius = this.cfg.radius + this.cfg.maxElevation * this.cfg.seaLevel;
 
-    this.palette = {
-      deepWater: c(CONFIG.palette.deepWater),
-      water: c(CONFIG.palette.water),
-      sand: c(CONFIG.palette.sand),
-      grass: c(CONFIG.palette.grass),
-      grassDark: c(CONFIG.palette.grassDark),
-      forest: c(CONFIG.palette.forest),
-      rock: c(CONFIG.palette.rock),
-      rockDark: c(CONFIG.palette.rockDark),
-      snow: c(CONFIG.palette.snow),
-    };
+    this.palette = {};
+    for (const k in CONFIG.palette) this.palette[k] = c(CONFIG.palette[k]);
 
     this.mesh = this._build();
   }
@@ -88,6 +80,56 @@ export class Planet {
     return normal.length() < 0.5 ? dir.clone().normalize() : normal;
   }
 
+  // Moisture field 0..1 (low frequency) — drives forest vs desert vs grassland.
+  moistureAt(dir) {
+    return (this.moistNoise.fbm(dir.x * 2.2, dir.y * 2.2 + 4, dir.z * 2.2, { octaves: 3 }) + 1) * 0.5;
+  }
+
+  // Classify the biome at a direction. `radius`/`normal` may be passed in to
+  // avoid recomputing them (props already have them). Returns a biome key.
+  _classify(dir, radius, normal) {
+    const cfg = this.cfg;
+    if (radius <= this.seaRadius + 0.001) return 'ocean';
+    const elev = (radius - cfg.radius) / cfg.maxElevation;   // 0..1
+    if (elev < cfg.seaLevel + 0.025) return 'beach';
+
+    // high ground: rock, snow-capped if cold
+    const lat = Math.abs(dir.y);                              // 0 equator .. 1 pole
+    let temp = 1 - Math.pow(lat, 1.4);                        // warm equator
+    temp -= elev * 0.45;                                      // cooler up high
+    temp += this.moistNoise.fbm(dir.x * 1.2 + 10, dir.y * 1.2, dir.z * 1.2, { octaves: 2 }) * 0.08;
+
+    if (elev > 0.82) return temp < 0.5 ? 'snow' : 'rock';
+    if (elev > 0.64) return 'rock';
+
+    // climate bands
+    if (temp < 0.16) return 'snow';                           // polar caps
+    if (temp < 0.34) return 'tundra';
+    const moist = this.moistureAt(dir);
+    if (temp > 0.7 && moist < 0.4) return 'desert';           // hot & dry
+    if (moist > 0.55) return 'forest';                        // wet
+    return 'grassland';
+  }
+
+  biomeAt(dir, radius = null, normal = null) {
+    const r = radius == null ? this.radiusAt(dir) : radius;
+    return this._classify(dir, r, normal);
+  }
+
+  _biomeColor(biome, color) {
+    const p = this.palette;
+    switch (biome) {
+      case 'beach': color.copy(p.sand); break;
+      case 'desert': color.copy(p.desertSand); break;
+      case 'grassland': color.copy(p.grassland); break;
+      case 'forest': color.copy(p.forest); break;
+      case 'tundra': color.copy(p.tundra); break;
+      case 'snow': color.copy(p.snow); break;
+      case 'rock': color.copy(p.rock); break;
+      default: color.copy(p.grass); break;
+    }
+  }
+
   _colorFor(dir, radius, color) {
     const cfg = this.cfg;
     const elev = (radius - cfg.radius) / cfg.maxElevation; // 0..1
@@ -104,21 +146,21 @@ export class Planet {
     const normal = this.normalAt(dir, 0.02);
     const slope = 1 - clamp(normal.dot(dir), 0, 1); // 0 flat .. ~1 steep
 
-    const a = elev;
-    if (a < seaT + 0.03) {
-      color.copy(this.palette.sand);
-    } else if (a < 0.42) {
-      color.copy(this.palette.grass).lerp(this.palette.grassDark, smoothstep(seaT, 0.42, a) * 0.6);
-    } else if (a < 0.66) {
-      color.copy(this.palette.grassDark).lerp(this.palette.forest, smoothstep(0.42, 0.66, a));
-    } else if (a < 0.85) {
-      color.copy(this.palette.forest).lerp(this.palette.rock, smoothstep(0.66, 0.85, a));
-    } else {
-      color.copy(this.palette.rock).lerp(this.palette.snow, smoothstep(0.85, 1.0, a));
+    const biome = this._classify(dir, radius, normal);
+    this._biomeColor(biome, color);
+
+    // Snow caps fade in toward the highest ground regardless of biome.
+    if (elev > 0.78 && biome !== 'snow') {
+      color.lerp(this.palette.snow, smoothstep(0.78, 0.96, elev) * 0.7);
+    }
+    // Desert dunes get a touch of darker sand banding.
+    if (biome === 'desert') {
+      const band = this.warpNoise.fbm(dir.x * 12, dir.y * 12, dir.z * 12, { octaves: 2 });
+      color.lerp(this.palette.desertDark, Math.max(0, band) * 0.3);
     }
 
-    // Rock breaks through on steep slopes.
-    if (slope > 0.35 && a > seaT + 0.05) {
+    // Rock breaks through on steep slopes (not in water/beach).
+    if (slope > 0.35 && elev > seaT + 0.05) {
       const rockMix = smoothstep(0.35, 0.7, slope);
       color.lerp(this.palette.rockDark, rockMix * 0.7);
     }
