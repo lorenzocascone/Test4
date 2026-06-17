@@ -173,9 +173,10 @@ export class Character {
     this.legR = lR.hip; this._kneeR = lR.knee;
     this.rig.add(this.legL, this.legR);
 
-    // Hat slot — sits on top of the head, so it bobs with it.
+    // Hat slot — seated down into the head crown so hats look worn (they
+    // intersect the head) rather than perched on the topmost point.
     this.hatSlot = new THREE.Group();
-    this.hatSlot.position.y = 0.42;
+    this.hatSlot.position.y = 0.22;
     this.head.add(this.hatSlot);
 
     this._blink = 0;
