@@ -115,38 +115,62 @@ export class Character {
     tuskL.position.set(-0.07, -0.14, 0.35); tuskR.position.set(0.07, -0.14, 0.35);
     this.head.add(tuskL, tuskR);
 
-    // --- Arms: long, dangling, with chunky hands -----------------------------
+    // --- Arms: upper arm + forearm hinged at an elbow, hand at the wrist ------
     const buildArm = (side) => {
-      const grp = new THREE.Group();
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), skin);
-      upper.position.y = -0.32;
+      const shoulder = new THREE.Group();            // shoulder pivot
+      const upperLen = 0.4;
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, upperLen, 3, 8), skin);
+      upper.position.y = -upperLen / 2;
       upper.castShadow = true;
-      const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.14, 1), skin);
-      hand.position.y = -0.66;
+      shoulder.add(upper);
+
+      const elbow = new THREE.Group();               // elbow pivot at upper-arm end
+      elbow.position.y = -upperLen;
+      const foreLen = 0.38;
+      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, foreLen, 3, 8), skin);
+      fore.position.y = -foreLen / 2;
+      fore.castShadow = true;
+      const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 1), skin);
+      hand.position.y = -foreLen - 0.05;
       hand.castShadow = true;
-      grp.add(upper, hand);
-      grp.position.set(side * 0.42, 1.28, 0);
-      return grp;
+      elbow.add(fore, hand);
+      shoulder.add(elbow);
+
+      shoulder.position.set(side * 0.42, 1.3, 0);
+      return { shoulder, elbow };
     };
-    this.armL = buildArm(-1);
-    this.armR = buildArm(1);
+    const aL = buildArm(-1), aR = buildArm(1);
+    this.armL = aL.shoulder; this._elbowL = aL.elbow;
+    this.armR = aR.shoulder; this._elbowR = aR.elbow;
     this.rig.add(this.armL, this.armR);
 
-    // --- Legs: short, bowed, with flat feet -----------------------------------
+    // --- Legs: thigh + shin hinged at a knee, flat foot at the ankle ----------
     const buildLeg = (side) => {
-      const grp = new THREE.Group();
-      const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.34, 4, 8), skin);
-      shin.position.y = -0.26;
+      const hip = new THREE.Group();                 // hip pivot
+      const thighLen = 0.3;
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, thighLen, 3, 8), skin);
+      thigh.position.y = -thighLen / 2;
+      thigh.castShadow = true;
+      hip.add(thigh);
+
+      const knee = new THREE.Group();                // knee pivot at thigh end
+      knee.position.y = -thighLen;
+      const shinLen = 0.24;
+      const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, shinLen, 3, 8), skin);
+      shin.position.y = -shinLen / 2;
       shin.castShadow = true;
       const foot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.34), skin);
-      foot.position.set(0, -0.48, 0.08);
+      foot.position.set(0, -shinLen - 0.04, 0.08);
       foot.castShadow = true;
-      grp.add(shin, foot);
-      grp.position.set(side * 0.2, 0.6, 0);
-      return grp;
+      knee.add(shin, foot);
+      hip.add(knee);
+
+      hip.position.set(side * 0.2, 0.64, 0);
+      return { hip, knee };
     };
-    this.legL = buildLeg(-1);
-    this.legR = buildLeg(1);
+    const lL = buildLeg(-1), lR = buildLeg(1);
+    this.legL = lL.hip; this._kneeL = lL.knee;
+    this.legR = lR.hip; this._kneeR = lR.knee;
     this.rig.add(this.legL, this.legR);
 
     // Hat slot — sits on top of the head, so it bobs with it.
@@ -200,14 +224,22 @@ export class Character {
     const amp = Math.min(speed, 1);
     // advance the stride phase by cadence ∝ speed (constant stride length)
     this.walkPhase += dt * 15 * speed;
-    const swing = Math.sin(this.walkPhase) * 0.85 * amp;
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
-    this.armL.rotation.x = -swing * 0.8;
-    this.armR.rotation.x = swing * 0.8;
-    // a little outward arm rest
-    this.armL.rotation.z = 0.18;
-    this.armR.rotation.z = -0.18;
+    const sw = Math.sin(this.walkPhase);
+
+    // LEGS: alternating hip swing, with the knee flexing during the forward
+    // (foot-lift) half of each leg's cycle so the gait isn't stiff-legged.
+    this.legL.rotation.x = sw * 0.7 * amp;
+    this.legR.rotation.x = -sw * 0.7 * amp;
+    this._kneeL.rotation.x = 0.05 + Math.max(0, sw) * 0.95 * amp;   // flex shin back
+    this._kneeR.rotation.x = 0.05 + Math.max(0, -sw) * 0.95 * amp;
+
+    // ARMS: opposite swing to the legs, with a relaxed, pumping elbow.
+    this.armL.rotation.x = -sw * 0.5 * amp;
+    this.armR.rotation.x = sw * 0.5 * amp;
+    this.armL.rotation.z = 0.16;
+    this.armR.rotation.z = -0.16;
+    this._elbowL.rotation.x = -(0.3 + Math.max(0, -sw) * 0.55 * amp); // bend forward
+    this._elbowR.rotation.x = -(0.3 + Math.max(0, sw) * 0.55 * amp);
 
     // body bob & lean
     const bob = Math.abs(Math.sin(this.walkPhase)) * 0.12 * amp;
