@@ -224,9 +224,12 @@ export class Props {
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
-      const forward = new THREE.Vector3(p.dir.y, -p.dir.x, p.dir.z).normalize();
-      alignToNormal(p.normal, forward, _quat);
-      _tmpQuat.setFromAxisAngle(p.normal, this.rng() * Math.PI * 2); // random yaw
+      // Grow "up" relative to the globe centre (radial), NOT the bumpy terrain
+      // normal — otherwise trees lean at every facet angle.
+      const up = p.dir;
+      const forward = new THREE.Vector3(up.y, -up.x, up.z).normalize();
+      alignToNormal(up, forward, _quat);
+      _tmpQuat.setFromAxisAngle(up, this.rng() * Math.PI * 2); // random yaw
       _quat.premultiply(_tmpQuat);
       const s = arch.scale[0] + this.rng() * arch.scale[1];
       _scale.set(s, s * (0.92 + this.rng() * 0.25), s);
@@ -312,12 +315,12 @@ export class Props {
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
-      _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.normal);
+      _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.dir); // grow radially up
       const s = 0.7 + this.rng() * 0.8;
       _scale.set(s, s, s);
       _mat4.compose(_pos, _quat, _scale);
       stems.setMatrixAt(i, _mat4);
-      const head = _pos.clone().addScaledVector(p.normal, 0.4 * s);
+      const head = _pos.clone().addScaledVector(p.dir, 0.4 * s);
       _mat4.compose(head, _quat, _scale);
       heads.setMatrixAt(i, _mat4);
       col.set(petals[(this.rng() * petals.length) | 0]);
@@ -347,7 +350,7 @@ export class Props {
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
-      _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.normal);
+      _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.dir); // grow radially up
       const s = 0.6 + this.rng() * 1.0;
       _scale.set(s, s * (1 + this.rng()), s);
       _mat4.compose(_pos, _quat, _scale);
