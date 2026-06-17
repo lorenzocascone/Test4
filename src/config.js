@@ -8,7 +8,7 @@ export const CONFIG = {
     radius: 32,           // base sea-level-ish radius (bigger world, smaller-feeling player)
     detail: 60,           // icosphere subdivisions (higher = smoother, heavier)
     maxElevation: 9.0,    // how far land rises above the base radius (dramatic relief)
-    seaLevel: 0.16,       // fraction of maxElevation that counts as water
+    seaLevel: 0.2,        // fraction of maxElevation that counts as water (a clear ocean)
     elevationPower: 1.5,  // >1 carves valleys & sharpens peaks (less "flat")
     noiseScale: 1.9,      // frequency of continents
     octaves: 5,           // fractal detail
@@ -39,8 +39,11 @@ export const CONFIG = {
 
   // --- world dressing ------------------------------------------------------
   props: {
-    trees: 300,
-    rocks: 170,
+    trees: 300,          // forest density
+    grasslandTrees: 60,  // sparse lone trees on the plains
+    polarTrees: 90,      // snowy pines in tundra/snow
+    cacti: 80,           // desert
+    rocks: 180,
     flowers: 440,
     grass: 1700,
   },
@@ -63,6 +66,11 @@ export const CONFIG = {
     grass:      '#79c75a',
     grassDark:  '#54a64a',
     forest:     '#3f8f4f',
+    grassland:  '#bcc856',
+    desertSand: '#e3c88a',
+    desertDark: '#cda85f',
+    tundra:     '#9fa884',
+    ice:        '#dbeaf2',
     rock:       '#9a8d7c',
     rockDark:   '#766c60',
     snow:       '#f4f6fb',

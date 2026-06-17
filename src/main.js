@@ -99,6 +99,9 @@ class Game {
       CONFIG.props.grass = Math.round(CONFIG.props.grass * 0.4);
       CONFIG.props.flowers = Math.round(CONFIG.props.flowers * 0.5);
       CONFIG.props.trees = Math.round(CONFIG.props.trees * 0.75);
+      CONFIG.props.grasslandTrees = Math.round(CONFIG.props.grasslandTrees * 0.75);
+      CONFIG.props.polarTrees = Math.round(CONFIG.props.polarTrees * 0.75);
+      CONFIG.props.cacti = Math.round(CONFIG.props.cacti * 0.75);
     }
     this.props = new Props(this.planet, seed ^ 0x5a5a, { mobile: this.isMobile });
     this.scene.add(this.props.group);
