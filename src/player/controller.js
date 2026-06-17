@@ -290,9 +290,10 @@ export class Controller {
     this._worldPos.copy(this.position).multiplyScalar(this._displayRadius);
     this.character.root.position.copy(this._worldPos);
 
-    // orient body: up = smoothed surface normal, face = facing tangent.
-    // Frame-rate-independent exponential smoothing avoids snapping/jerk.
-    alignToNormal(this._smoothNormal, this.facing, this._targetQuat);
+    // orient body: up = radial (gravity), face = facing tangent — the character
+    // stands upright relative to the globe centre, like the trees, instead of
+    // tilting to the ground slope. Frame-rate-independent slerp avoids snapping.
+    alignToNormal(this.position, this.facing, this._targetQuat);
     if (dt > 0) {
       const t = 1 - Math.exp(-CONFIG.player.turnSpeed * dt);
       this.character.root.quaternion.slerp(this._targetQuat, t);
