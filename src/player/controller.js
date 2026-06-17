@@ -28,8 +28,10 @@ export class Controller {
     this.jumpVel = 0;
     this.altitude = 0;                      // height above the takeoff ground (can go negative)
     this.grounded = true;
+    this.swimming = false;                  // afloat over the ocean
     this.speed01 = 0;                       // normalised speed for animation
     this._stepAccum = 0;
+    this._splashAccum = 0;
     this._momentumDir = new THREE.Vector3();// horizontal momentum carried into jumps
     this._momentumSpeed = 0;                // angular speed of that momentum
     this._moveVec = new THREE.Vector3();    // reused scratch for input direction
@@ -175,6 +177,10 @@ export class Controller {
     const moveDir = this._moveVector(this._moveVec);
     const up = this.position;
     const actualRadius = this.planet.radiusAt(this.position);
+    const seaR = this.planet.seaRadius;
+    const wasSwimming = this.swimming;
+    // Afloat when the ground beneath us is below the sea surface (and not mid-jump).
+    this.swimming = this.grounded && actualRadius < seaR - 0.05;
     const sprintMul = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
     const inputAngSpeed = moveDir ? CONFIG.player.walkSpeed * (this._inputMag || 1) * sprintMul : 0;
 
@@ -205,15 +211,17 @@ export class Controller {
     }
 
     if (effDir && this.enabled) {
-      const ang = effAngSpeed * dt;
+      const moveAngSpeed = this.swimming ? effAngSpeed * CONFIG.player.swimFactor : effAngSpeed;
+      const ang = moveAngSpeed * dt;
       // candidate next position along the great circle
       const axis = new THREE.Vector3().crossVectors(up, effDir).normalize();
       this._quat.setFromAxisAngle(axis, ang);
       this._candidatePos.copy(this.position).applyQuaternion(this._quat).normalize();
 
-      // Climb limit: block a grounded step that pushes uphill into a too-steep face.
+      // Climb limit: block a grounded step that pushes uphill into a too-steep
+      // face. Skipped while swimming (the sea surface is flat).
       let blocked = false;
-      if (this.grounded) {
+      if (this.grounded && !this.swimming) {
         const candRadius = this.planet.radiusAt(this._candidatePos);
         if (candRadius > actualRadius + 0.02) { // moving uphill
           const candNormal = this.planet.normalAt(this._candidatePos, CONFIG.player.slopeEps);
@@ -228,10 +236,18 @@ export class Controller {
         this._orthonormalize();
         // face the travel direction (re-projected into the new tangent plane)
         this.facing.copy(effDir).addScaledVector(this.position, -effDir.dot(this.position)).normalize();
-        this.speed01 = effAngSpeed / CONFIG.player.walkSpeed;
+        this.speed01 = moveAngSpeed / CONFIG.player.walkSpeed;
 
-        // footstep cadence + dust — only while on the ground
-        if (this.grounded) {
+        if (this.swimming) {
+          // periodic stroke splashes at the waterline
+          this._splashAccum += dt * 2.0;
+          if (this._splashAccum > 1) {
+            this._splashAccum = 0;
+            if (this.audio) this.audio.splash();
+            if (this._onSplash) this._onSplash(this.position.clone().multiplyScalar(seaR), this.position.clone());
+          }
+        } else if (this.grounded) {
+          // footstep cadence + dust
           this._stepAccum += dt * (4.8 * this.speed01);
           if (this._stepAccum > 1) {
             this._stepAccum = 0;
@@ -248,7 +264,7 @@ export class Controller {
 
     // jump + radial gravity — height is measured from the takeoff ground so the
     // arc is a clean parabola, not a tracing of the terrain passing underneath.
-    if (this.input.jumpQueued && this.grounded) {
+    if (this.input.jumpQueued && this.grounded && !this.swimming) {
       this.jumpVel = CONFIG.player.jumpStrength;
       this.grounded = false;
       this._jumpBaseRadius = this._groundRadius;
@@ -258,29 +274,43 @@ export class Controller {
 
     const k = dt > 0 ? 1 - Math.exp(-CONFIG.player.groundStiffness * dt) : 1;
     if (this.grounded) {
-      // ease the standing height toward the real terrain → no per-bump bobbing
-      this._groundRadius += (actualRadius - this._groundRadius) * k;
+      // ease standing height toward terrain; while swimming, float at the sea
+      // surface but ride higher than the floor in the shallows (wading).
+      let target = actualRadius;
+      if (this.swimming) {
+        target = Math.max(seaR - CONFIG.player.swimSink, actualRadius + CONFIG.player.wadeClear);
+      }
+      this._groundRadius += (target - this._groundRadius) * k;
       this.altitude = 0;
     } else {
       this.jumpVel -= CONFIG.player.gravity * dt;
       this.altitude += this.jumpVel * dt; // may go negative when falling into a dip
       const airRadius = this._jumpBaseRadius + this.altitude;
-      if (this.jumpVel <= 0 && airRadius <= actualRadius) {
-        // landed — snap onto whatever ground we actually met (ledge or valley)
+      // over water you land on the surface, not the deep sea floor
+      const landRadius = actualRadius < seaR ? seaR : actualRadius;
+      if (this.jumpVel <= 0 && airRadius <= landRadius) {
+        // landed — snap onto whatever we actually met (ledge, valley, or sea)
         this.grounded = true;
         this.jumpVel = 0;
         this.altitude = 0;
-        this._groundRadius = actualRadius;
+        this._groundRadius = landRadius;
       }
     }
     this._displayRadius = this.grounded ? this._groundRadius : (this._jumpBaseRadius + this.altitude);
+    if (this.swimming) this._displayRadius += Math.sin(elapsed * 2.2) * CONFIG.player.swimBob;
+
+    // splash + sound the moment we wade in
+    if (this.swimming && !wasSwimming) {
+      if (this.audio) this.audio.splash();
+      if (this._onSplash) this._onSplash(this.position.clone().multiplyScalar(seaR), this.position.clone());
+    }
 
     // smooth the up-vector toward the macro surface normal (ignores facets)
     const targetNormal = this.planet.normalAt(this.position, CONFIG.player.slopeEps);
     this._smoothNormal.lerp(targetNormal, k).normalize();
 
     this._syncTransform(dt);
-    this.character.update(dt, elapsed, this.speed01);
+    this.character.update(dt, elapsed, this.speed01, this.swimming);
     this._updateCamera(dt);
   }
 
@@ -326,6 +356,7 @@ export class Controller {
     // Re-seat the smoothing state on the current (possibly just-set) position so
     // there's no first-frame pop after a respawn.
     this.grounded = true;
+    this.swimming = false;
     this.altitude = 0;
     this.jumpVel = 0;
     this._groundRadius = this.planet.radiusAt(this.position);
@@ -343,4 +374,5 @@ export class Controller {
   get worldPosition() { return this._worldPos; }
   get surfaceNormal() { return this._smoothNormal; }
   onStep(fn) { this._onStep = fn; }
+  onSplash(fn) { this._onSplash = fn; }
 }
