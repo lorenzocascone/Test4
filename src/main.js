@@ -168,6 +168,7 @@ class Game {
     this.controller.facing.copy(this.controller.heading);
     this.controller.snapCamera();
     this.controller.onStep((pos, normal) => this.particles.dust(pos, normal));
+    this.controller.onSplash((pos, up) => this.particles.splash(pos, up));
 
     this.collectibles = new Collectibles(this.planet, this.particles, (gem) => this._onCollect(gem));
     this.scene.add(this.collectibles.group);

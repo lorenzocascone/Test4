@@ -182,6 +182,7 @@ export class Character {
     this._blink = 0;
     this._blinkTimer = 2 + Math.random() * 3;
     this.walkPhase = 0;
+    this.swimPhase = 0;
   }
 
   setBodyColor(hex) { this.bodyMat.color.set(hex); }
@@ -221,8 +222,29 @@ export class Character {
   // `speed` is the movement factor (0 idle, ≈1 walk, ≈2 run). Drives the walk
   // cycle: stride cadence is proportional to speed so footfalls match the
   // ground (no sliding), while swing amplitude is capped.
-  update(dt, elapsed, speed) {
+  update(dt, elapsed, speed, swimming = false) {
     const amp = Math.min(speed, 1);
+
+    if (swimming) {
+      // Swim pose: body pitched forward and bobbing, arms doing an alternating
+      // crawl stroke, legs flutter-kicking. Animates even while floating still.
+      this.swimPhase += dt * 6;
+      const p = this.swimPhase;
+      const a = Math.sin(p);
+      this.rig.rotation.x = 0.4;
+      this.rig.position.y = Math.sin(p) * 0.04;
+      this.armL.rotation.x = -1.2 + a * 0.9;     // reach forward / pull back
+      this.armR.rotation.x = -1.2 - a * 0.9;
+      this.armL.rotation.z = 0.3;
+      this.armR.rotation.z = -0.3;
+      this._elbowL.rotation.x = -(0.6 + Math.max(0, a) * 0.5);
+      this._elbowR.rotation.x = -(0.6 + Math.max(0, -a) * 0.5);
+      const kick = Math.sin(p * 2);
+      this.legL.rotation.x = kick * 0.3;
+      this.legR.rotation.x = -kick * 0.3;
+      this._kneeL.rotation.x = 0.2 + Math.max(0, kick) * 0.3;
+      this._kneeR.rotation.x = 0.2 + Math.max(0, -kick) * 0.3;
+    } else {
     // advance the stride phase by cadence ∝ speed (constant stride length)
     this.walkPhase += dt * 15 * speed;
     const sw = Math.sin(this.walkPhase);
@@ -246,6 +268,7 @@ export class Character {
     const bob = Math.abs(Math.sin(this.walkPhase)) * 0.12 * amp;
     this.rig.position.y = bob;
     this.rig.rotation.x = amp * 0.06; // lean into the walk
+    }
     // gentle idle breathing
     const breathe = Math.sin(elapsed * 2) * 0.02 * (1 - amp);
     this.head.position.y = this.headBaseY + breathe;

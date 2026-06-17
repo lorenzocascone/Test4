@@ -78,6 +78,17 @@ export class Particles {
     }
   }
 
+  // Watery splash thrown up at the surface (wading in / swim strokes).
+  splash(pos, up) {
+    const colors = ['#cfeefb', '#a9ddf2', '#ffffff'];
+    for (let k = 0; k < 8; k++) {
+      const dir = up.clone().multiplyScalar(2.5 + Math.random() * 2.5)
+        .add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2));
+      const col = new THREE.Color(colors[(Math.random() * colors.length) | 0]);
+      this._spawn(pos, dir, col, 1.3 + Math.random() * 1.5, 0.4 + Math.random() * 0.35, 9);
+    }
+  }
+
   // Soft dust kicked up by footsteps.
   dust(pos, up) {
     for (let k = 0; k < 3; k++) {

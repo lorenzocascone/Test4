@@ -106,4 +106,32 @@ export class Audio {
 
   uiClick() { this._blip(660, 0.08, 'square', 0.08); }
   jump() { this._blip(330, 0.18, 'sine', 0.14); this._blip(495, 0.16, 'sine', 0.1, 0.04); }
+
+  // A short band-passed noise burst sweeping down = a watery splash.
+  splash() {
+    if (!this.ctx || this.muted) return;
+    if (!this._noiseBuf) {
+      const len = (this.ctx.sampleRate * 1) | 0;
+      const b = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this._noiseBuf = b;
+    }
+    const t = this.ctx.currentTime;
+    const dur = 0.32;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.8;
+    filter.frequency.setValueAtTime(1500, t);
+    filter.frequency.exponentialRampToValueAtTime(450, t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.2, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(filter).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + dur + 0.02);
+  }
 }
