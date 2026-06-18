@@ -24,6 +24,7 @@ export const CONFIG = {
     groundStiffness: 12,  // exp-smoothing rate for standing height & up-vector
     slopeEps: 0.05,       // macro normal/slope sampling offset (ignores single facets)
     swimFactor: 0.55,     // movement speed multiplier while swimming
+    swimDepth: 0.7,       // water must be deeper than this (≈ hip height) to swim
     swimSink: 0.95,       // how deep the body floats below the water surface
     swimBob: 0.06,        // gentle vertical bob while afloat
     wadeClear: 0.25,      // keep this far above the sea floor in the shallows
