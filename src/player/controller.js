@@ -174,7 +174,7 @@ export class Controller {
     return out.normalize();
   }
 
-  update(dt, elapsed) {
+  update(dt, elapsed, animDt = dt, animElapsed = elapsed) {
     const moveDir = this._moveVector(this._moveVec);
     const up = this.position;
     const actualRadius = this.planet.radiusAt(this.position);
@@ -320,7 +320,8 @@ export class Controller {
     this._smoothNormal.lerp(targetNormal, k).normalize();
 
     this._syncTransform(dt);
-    this.character.update(dt, elapsed, this.speed01, this.swimming);
+    // animation uses the stepped clock (stop-motion judder); transform/camera stay smooth
+    this.character.update(animDt, animElapsed, this.speed01, this.swimming);
     this._updateCamera(dt);
   }
 

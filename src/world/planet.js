@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { Noise } from '../utils/noise.js';
 import { clamp, smoothstep } from '../utils/math.js';
@@ -171,14 +172,12 @@ export class Planet {
   }
 
   _build() {
-    const geo = new THREE.IcosahedronGeometry(this.cfg.radius, this.cfg.detail);
+    let geo = new THREE.IcosahedronGeometry(this.cfg.radius, this.cfg.detail);
     geo.deleteAttribute('normal');
     geo.deleteAttribute('uv');
 
     const pos = geo.attributes.position;
     const dir = new THREE.Vector3();
-    const colors = new Float32Array(pos.count * 3);
-    const tmp = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
       dir.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
@@ -186,32 +185,33 @@ export class Planet {
       pos.setXYZ(i, dir.x * r, dir.y * r, dir.z * r);
     }
 
-    // Flat shading needs non-indexed geometry so each face gets a face normal.
-    const flat = geo.toNonIndexed();
-    flat.computeVertexNormals();
+    // Weld shared vertices and compute SMOOTH normals → soft, rounded clay
+    // terrain (no hard facets). Colour per vertex for soft biome gradients.
+    geo = mergeVertices(geo);
+    geo.computeVertexNormals();
 
-    const fpos = flat.attributes.position;
-    const fcolors = new Float32Array(fpos.count * 3);
-    for (let i = 0; i < fpos.count; i++) {
-      dir.set(fpos.getX(i), fpos.getY(i), fpos.getZ(i));
+    const vpos = geo.attributes.position;
+    const colors = new Float32Array(vpos.count * 3);
+    const tmp = new THREE.Color();
+    for (let i = 0; i < vpos.count; i++) {
+      dir.set(vpos.getX(i), vpos.getY(i), vpos.getZ(i));
       const r = dir.length();
       dir.normalize();
       this._colorFor(dir, r, tmp);
-      fcolors[i * 3] = tmp.r;
-      fcolors[i * 3 + 1] = tmp.g;
-      fcolors[i * 3 + 2] = tmp.b;
+      colors[i * 3] = tmp.r;
+      colors[i * 3 + 1] = tmp.g;
+      colors[i * 3 + 2] = tmp.b;
     }
-    flat.setAttribute('color', new THREE.BufferAttribute(fcolors, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      flatShading: true,
-      roughness: 0.95,
+      roughness: 0.96,
       metalness: 0.0,
-      envMapIntensity: 0.4,
+      envMapIntensity: 0.35,
     });
 
-    const mesh = new THREE.Mesh(flat, mat);
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.name = 'planet';

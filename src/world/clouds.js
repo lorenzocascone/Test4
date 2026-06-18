@@ -26,11 +26,12 @@ export class Clouds {
     const baseR = planetRadius + CONFIG.planet.maxElevation + 6;
 
     const mat = new THREE.MeshStandardMaterial({
-      color: '#ffffff',
-      flatShading: true,
+      color: '#fdfbf5',
       roughness: 1,
+      metalness: 0,
+      envMapIntensity: 0.4,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.95,
     });
 
     for (let i = 0; i < CONFIG.clouds; i++) {

@@ -7,15 +7,15 @@ import * as THREE from 'three';
 
 export class Water {
   constructor(seaRadius) {
-    const geo = new THREE.IcosahedronGeometry(seaRadius, 24);
+    const geo = new THREE.IcosahedronGeometry(seaRadius, 32);
 
     const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#3f93cf'),
+      color: new THREE.Color('#4aa3d8'),
       transparent: true,
-      opacity: 0.82,
-      roughness: 0.15,
-      metalness: 0.1,
-      flatShading: true,
+      opacity: 0.85,
+      roughness: 0.35,
+      metalness: 0.0,
+      envMapIntensity: 0.5,
     });
 
     this.uniforms = { uTime: { value: 0 } };

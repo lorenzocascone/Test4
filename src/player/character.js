@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 
 import * as THREE from 'three';
+import { clayNormalTexture } from '../utils/textures.js';
 
 export class Character {
   constructor() {
@@ -15,10 +16,19 @@ export class Character {
     this.rig = new THREE.Group();
     this.root.add(this.rig);
 
-    this.bodyMat = new THREE.MeshStandardMaterial({ color: '#8ab84e', flatShading: true, roughness: 0.7 });
-    this.accentMat = new THREE.MeshStandardMaterial({ color: '#7a4a2b', flatShading: true, roughness: 0.7 });
-    this.skinMat = new THREE.MeshStandardMaterial({ color: '#ffe0bd', flatShading: true, roughness: 0.7 });
-    this.eyeMat = new THREE.MeshStandardMaterial({ color: '#2b2b33', roughness: 0.3 });
+    const ns = new THREE.Vector2(0.28, 0.28);
+    // Soft felt/clay skin — physical sheen reads as a hand-made figurine.
+    this.bodyMat = new THREE.MeshPhysicalMaterial({
+      color: '#8ab84e', roughness: 0.88, metalness: 0, envMapIntensity: 0.4,
+      sheen: 0.6, sheenRoughness: 0.85, sheenColor: new THREE.Color('#ffffff'),
+      normalMap: clayNormalTexture(), normalScale: ns,
+    });
+    this.accentMat = new THREE.MeshStandardMaterial({
+      color: '#7a4a2b', roughness: 0.92, metalness: 0, envMapIntensity: 0.35,
+      normalMap: clayNormalTexture(), normalScale: ns,
+    });
+    this.skinMat = new THREE.MeshStandardMaterial({ color: '#ffe0bd', roughness: 0.85 });
+    this.eyeMat = new THREE.MeshStandardMaterial({ color: '#2b2b33', roughness: 0.25 });
 
     this._build();
     this.hatType = 'none';
@@ -204,12 +214,12 @@ export class Character {
       hat = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.8, 12), accent);
       hat.position.y = 0.4;
     } else if (type === 'crown') {
-      hat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.35, 7), new THREE.MeshStandardMaterial({ color: '#ffd166', flatShading: true, metalness: 0.5, roughness: 0.3, emissive: '#7a5a00', emissiveIntensity: 0.3 }));
+      hat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.35, 18), new THREE.MeshStandardMaterial({ color: '#ffd166', metalness: 0.5, roughness: 0.3, emissive: '#7a5a00', emissiveIntensity: 0.3 }));
       hat.position.y = 0.18;
     } else if (type === 'leaf') {
       hat = new THREE.Group();
       for (let i = 0; i < 3; i++) {
-        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 5), new THREE.MeshStandardMaterial({ color: '#5bbf5a', flatShading: true }));
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 8), new THREE.MeshStandardMaterial({ color: '#5bbf5a' }));
         leaf.position.y = 0.2;
         leaf.rotation.z = (i - 1) * 0.5;
         leaf.rotation.x = -0.3;
