@@ -28,7 +28,8 @@ export class Controller {
     this.jumpVel = 0;
     this.altitude = 0;                      // height above the takeoff ground (can go negative)
     this.grounded = true;
-    this.swimming = false;                  // afloat over the ocean
+    this.swimming = false;                  // afloat over deep water (above hip)
+    this._inWater = false;                  // feet in water (any depth) → splashes
     this.speed01 = 0;                       // normalised speed for animation
     this._stepAccum = 0;
     this._splashAccum = 0;
@@ -178,9 +179,12 @@ export class Controller {
     const up = this.position;
     const actualRadius = this.planet.radiusAt(this.position);
     const seaR = this.planet.seaRadius;
+    const waterDepth = seaR - actualRadius;       // >0 ⇒ floor is below the sea surface
     const wasSwimming = this.swimming;
-    // Afloat when the ground beneath us is below the sea surface (and not mid-jump).
-    this.swimming = this.grounded && actualRadius < seaR - 0.05;
+    const wasInWater = this._inWater;
+    this._inWater = waterDepth > 0.05;            // feet wet ⇒ splashing
+    // Swim only once the water is above hip height; below that, wade & walk.
+    this.swimming = this.grounded && waterDepth > CONFIG.player.swimDepth;
     const sprintMul = this.input.sprint ? CONFIG.player.sprintMultiplier : 1;
     const inputAngSpeed = moveDir ? CONFIG.player.walkSpeed * (this._inputMag || 1) * sprintMul : 0;
 
@@ -247,12 +251,17 @@ export class Controller {
             if (this._onSplash) this._onSplash(this.position.clone().multiplyScalar(seaR), this.position.clone());
           }
         } else if (this.grounded) {
-          // footstep cadence + dust
+          // step cadence — splash through shallow water, dust on dry land
           this._stepAccum += dt * (4.8 * this.speed01);
           if (this._stepAccum > 1) {
             this._stepAccum = 0;
-            if (this.audio) this.audio.footstep();
-            if (this._onStep) this._onStep(this._worldPos.clone(), this._smoothNormal.clone());
+            if (this._inWater) {
+              if (this.audio) this.audio.splash();
+              if (this._onSplash) this._onSplash(this.position.clone().multiplyScalar(seaR), this.position.clone());
+            } else {
+              if (this.audio) this.audio.footstep();
+              if (this._onStep) this._onStep(this._worldPos.clone(), this._smoothNormal.clone());
+            }
           }
         }
       } else {
@@ -299,8 +308,9 @@ export class Controller {
     this._displayRadius = this.grounded ? this._groundRadius : (this._jumpBaseRadius + this.altitude);
     if (this.swimming) this._displayRadius += Math.sin(elapsed * 2.2) * CONFIG.player.swimBob;
 
-    // splash + sound the moment we wade in
-    if (this.swimming && !wasSwimming) {
+    // splash + sound the moment feet first touch water, and again (bigger) when
+    // we lift off into a swim
+    if ((this._inWater && !wasInWater) || (this.swimming && !wasSwimming)) {
       if (this.audio) this.audio.splash();
       if (this._onSplash) this._onSplash(this.position.clone().multiplyScalar(seaR), this.position.clone());
     }
