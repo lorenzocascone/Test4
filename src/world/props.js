@@ -9,6 +9,19 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { fibonacciSphere, alignToNormal } from '../utils/math.js';
+import { clayNormalTexture } from '../utils/textures.js';
+
+// Soft matte clay material with the shared hand-pressed normal micro-texture.
+function clayMat(opts = {}) {
+  return new THREE.MeshStandardMaterial({
+    roughness: 0.92,
+    metalness: 0.0,
+    envMapIntensity: 0.35,
+    normalMap: clayNormalTexture(),
+    normalScale: new THREE.Vector2(0.22, 0.22),
+    ...opts,
+  });
+}
 
 const _pos = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
@@ -212,11 +225,11 @@ export class Props {
 
     let trunk = null;
     if (arch.trunk) {
-      const trunkMat = new THREE.MeshStandardMaterial({ color: arch.trunkColor || '#8a5a3b', flatShading: true, roughness: 1 });
+      const trunkMat = clayMat({ color: arch.trunkColor || '#8a5a3b', roughness: 1 });
       trunk = new THREE.InstancedMesh(arch.trunk, trunkMat, n);
       trunk.castShadow = true; trunk.receiveShadow = true;
     }
-    const foliageMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 });
+    const foliageMat = clayMat({ vertexColors: true, roughness: 0.9 });
     const foliage = new THREE.InstancedMesh(arch.foliage, foliageMat, n);
     foliage.castShadow = true; foliage.receiveShadow = true;
     const colors = new Float32Array(n * 3);
@@ -262,7 +275,7 @@ export class Props {
         gp.getZ(i) * (0.8 + Math.random() * 0.5));
     }
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
+    const mat = clayMat({ vertexColors: true, roughness: 1 });
     const rocks = new THREE.InstancedMesh(geo, mat, n);
     const colors = new Float32Array(n * 3);
     // rock colour set depends on the biome it sits in
@@ -302,11 +315,11 @@ export class Props {
     // a flower = thin stem + a little disc head (merged via two instanced meshes)
     const stemGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 4);
     stemGeo.translate(0, 0.2, 0);
-    const stemMat = new THREE.MeshStandardMaterial({ color: '#4a9a4a', flatShading: true });
+    const stemMat = clayMat({ color: '#4a9a4a' });
     const stems = new THREE.InstancedMesh(stemGeo, stemMat, n);
 
     const headGeo = new THREE.IcosahedronGeometry(0.12, 0);
-    const headMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, emissiveIntensity: 0.2 });
+    const headMat = clayMat({ vertexColors: true, emissiveIntensity: 0.2 });
     const heads = new THREE.InstancedMesh(headGeo, headMat, n);
     const colors = new Float32Array(n * 3);
     const petals = ['#ff8fab', '#ffd166', '#ff6b6b', '#c79bff', '#ffffff', '#ff9ec7'];
@@ -341,7 +354,7 @@ export class Props {
     // a tuft = a tiny squished cone
     const geo = new THREE.ConeGeometry(0.08, 0.32, 4);
     geo.translate(0, 0.16, 0);
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
+    const mat = clayMat({ vertexColors: true, roughness: 1 });
     const grass = new THREE.InstancedMesh(geo, mat, n);
     const colors = new Float32Array(n * 3);
     const greens = ['#6cc36a', '#5bbf5a', '#79c75a', '#54a64a'];

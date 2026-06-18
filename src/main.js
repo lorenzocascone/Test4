@@ -9,7 +9,10 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { CONFIG } from './config.js';
 import { randSeed } from './utils/noise.js';
@@ -26,6 +29,45 @@ import { Character } from './player/character.js';
 import { Controller } from './player/controller.js';
 import { HUD } from './ui/hud.js';
 import { Customizer } from './ui/customize.js';
+
+// Cozy storybook grade: warm tint, gentle desaturation, soft vignette, faint
+// film grain — the Pokémon-Concierge warmth on top of the vibrant biomes.
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uWarm: { value: new THREE.Color(1.06, 1.0, 0.92) },
+    uSat: { value: 0.9 },
+    uVignette: { value: 0.32 },
+    uGrain: { value: 0.05 },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uTime, uSat, uVignette, uGrain;
+    uniform vec3 uWarm;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      // warm tint
+      c.rgb *= uWarm;
+      // gentle desaturation toward luminance
+      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+      c.rgb = mix(vec3(l), c.rgb, uSat);
+      // soft vignette
+      vec2 d = vUv - 0.5;
+      float vig = smoothstep(0.85, 0.25, dot(d, d) * 2.4);
+      c.rgb *= mix(1.0 - uVignette, 1.0, vig);
+      // faint animated grain
+      float g = fract(sin(dot(vUv * vec2(uTime + 1.0, uTime + 2.0), vec2(12.9898, 78.233))) * 43758.5453);
+      c.rgb += (g - 0.5) * uGrain;
+      gl_FragColor = c;
+    }
+  `,
+};
 
 class Game {
   constructor() {
@@ -74,9 +116,19 @@ class Game {
 
   _setupScene() {
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2('#cfeafe', 0.0028);
+    this.scene.fog = new THREE.FogExp2('#e9e3d2', 0.0026); // warm, hazy distance
     this.camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, window.innerWidth / window.innerHeight, 0.5, 1200);
     this.camera.position.set(0, 30, 60);
+
+    // Soft image-based lighting so the clay materials read as real, hand-made
+    // surfaces (gentle reflections + indirect fill). Generated once.
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.05).texture;
+      pmrem.dispose();
+    } catch (e) {
+      console.warn('Environment map unavailable; continuing without IBL.', e);
+    }
   }
 
   // Build the world in small steps so the loader can animate.
@@ -123,20 +175,30 @@ class Game {
   }
 
   _setupPostFX() {
+    const w = window.innerWidth, h = window.innerHeight;
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    this.bloom = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.55,   // strength
-      0.7,    // radius
-      0.72    // threshold — only bright things (gems, sun, water highlights) glow
-    );
+    // Tilt-shift: a tasteful depth-of-field focused on the player makes the
+    // world feel like a cozy little diorama. (Desktop only — it's the priciest.)
+    if (!this.isMobile) {
+      this.bokeh = new BokehPass(this.scene, this.camera, {
+        focus: CONFIG.camera.distance, aperture: 0.0006, maxblur: 0.006, width: w, height: h,
+      });
+      this.composer.addPass(this.bokeh);
+    }
+
+    // Softer, gentler bloom than before.
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.38, 0.8, 0.78);
     this.composer.addPass(this.bloom);
 
-    // SMAA is the priciest pass — skip it on mobile for a stable framerate.
+    // Warm cozy grade (grain only on desktop).
+    this.grade = new ShaderPass(GradeShader);
+    this.grade.uniforms.uGrain.value = this.isMobile ? 0.0 : 0.05;
+    this.composer.addPass(this.grade);
+
     if (!this.isMobile) {
-      this.composer.addPass(new SMAAPass(window.innerWidth * this.renderer.getPixelRatio(), window.innerHeight * this.renderer.getPixelRatio()));
+      this.composer.addPass(new SMAAPass(w * this.renderer.getPixelRatio(), h * this.renderer.getPixelRatio()));
     }
     this.composer.addPass(new OutputPass());
   }
@@ -250,23 +312,34 @@ class Game {
     this.renderer.setSize(w, h);
     if (this.composer) this.composer.setSize(w, h);
     if (this.bloom) this.bloom.setSize(w, h);
+    if (this.bokeh) this.bokeh.setSize(w, h);
   }
 
   _loop() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.elapsed += dt;
 
-    // world updates
+    // Stepped clock (~12fps) for a stop-motion judder on ANIMATION only —
+    // camera, movement, water and lighting keep using the smooth dt/elapsed.
+    const STEP = 1 / 12;
+    this._animAccum = (this._animAccum || 0) + dt;
+    let animDt = 0;
+    while (this._animAccum >= STEP) { this._animAccum -= STEP; this._animElapsed = (this._animElapsed || 0) + STEP; animDt += STEP; }
+    const animElapsed = this._animElapsed || 0;
+
+    // world updates — wind sway judders, water/clouds/sun stay smooth
     this.water.update(dt, this.elapsed);
-    this.props.update(dt, this.elapsed);
+    this.props.update(animDt, animElapsed);
     this.clouds.update(dt);
     this.sky.update(this.elapsed);
     this.dayNight.update(dt);
     this.particles.update(dt);
+    if (this.grade) this.grade.uniforms.uTime.value = this.elapsed;
 
     if (this.state === 'playing') {
-      this.controller.update(dt, this.elapsed);
-      this.collectibles.update(dt, this.elapsed, this.controller.worldPosition);
+      this.controller.update(dt, this.elapsed, animDt, animElapsed);
+      this.collectibles.update(animDt, animElapsed, this.controller.worldPosition);
+      if (this.bokeh?.uniforms?.focus) this.bokeh.uniforms.focus.value = this.camera.position.distanceTo(this.controller.worldPosition);
       // periodic HUD time refresh
       this._todAccum = (this._todAccum || 0) + dt;
       if (this._todAccum > 0.5) {
@@ -280,7 +353,7 @@ class Game {
       this.camera.position.set(Math.cos(this._introAngle) * r, 14 + Math.sin(this._introAngle * 0.6) * 6, Math.sin(this._introAngle) * r);
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(0, 0, 0);
-      this.collectibles.update(dt, this.elapsed, null);
+      this.collectibles.update(animDt, animElapsed, null);
     }
 
     this.composer.render();

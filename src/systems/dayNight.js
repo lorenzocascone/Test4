@@ -14,9 +14,9 @@ const C = (h) => new THREE.Color(h);
 const KEYS = [
   { t: 0.00, top: C('#0b1733'), bottom: C('#1c2c52'), sun: C('#3a5a8f'), sunI: 0.05, amb: C('#24304f'), ambI: 0.25, hemi: C('#1b2748'), fog: C('#13203f'), star: 1.0 },
   { t: 0.22, top: C('#274a7a'), bottom: C('#e8a070'), sun: C('#ffd9a0'), sunI: 0.5,  amb: C('#7a86a8'), ambI: 0.5,  hemi: C('#6a7aa0'), fog: C('#cfa890'), star: 0.3 },
-  { t: 0.30, top: C('#5aa0e0'), bottom: C('#ffe6c0'), sun: C('#fff0d0'), sunI: 1.0,  amb: C('#bcd0e8'), ambI: 0.7,  hemi: C('#aac4e0'), fog: C('#dfeefc'), star: 0.0 },
-  { t: 0.50, top: C('#4a90d9'), bottom: C('#d8f0ff'), sun: C('#fff8e8'), sunI: 1.25, amb: C('#cfe6f7'), ambI: 0.85, hemi: C('#bfe0f0'), fog: C('#e7f5ff'), star: 0.0 },
-  { t: 0.70, top: C('#5aa0e0'), bottom: C('#ffe6c0'), sun: C('#fff0d0'), sunI: 1.0,  amb: C('#bcd0e8'), ambI: 0.7,  hemi: C('#aac4e0'), fog: C('#dfeefc'), star: 0.0 },
+  { t: 0.30, top: C('#7bb4e0'), bottom: C('#ffe7c2'), sun: C('#ffe6b8'), sunI: 0.95, amb: C('#d8dcc8'), ambI: 0.55, hemi: C('#cdd6c2'), fog: C('#eae6d4'), star: 0.0 },
+  { t: 0.50, top: C('#74b0dd'), bottom: C('#eaeede'), sun: C('#ffeccb'), sunI: 1.1,  amb: C('#e4e2d2'), ambI: 0.68, hemi: C('#d6ddc8'), fog: C('#efeadb'), star: 0.0 },
+  { t: 0.70, top: C('#7bb4e0'), bottom: C('#ffe7c2'), sun: C('#ffe6b8'), sunI: 0.95, amb: C('#d8dcc8'), ambI: 0.55, hemi: C('#cdd6c2'), fog: C('#eae6d4'), star: 0.0 },
   { t: 0.80, top: C('#46407a'), bottom: C('#ff8a5c'), sun: C('#ff9e5a'), sunI: 0.55, amb: C('#8a7a9a'), ambI: 0.5,  hemi: C('#7a6a96'), fog: C('#c07a66'), star: 0.35 },
   { t: 0.92, top: C('#16204a'), bottom: C('#2a2452'), sun: C('#5a6abf'), sunI: 0.12, amb: C('#33335a'), ambI: 0.3,  hemi: C('#26305a'), fog: C('#1a2244'), star: 0.85 },
   { t: 1.00, top: C('#0b1733'), bottom: C('#1c2c52'), sun: C('#3a5a8f'), sunI: 0.05, amb: C('#24304f'), ambI: 0.25, hemi: C('#1b2748'), fog: C('#13203f'), star: 1.0 },
@@ -64,6 +64,7 @@ export class DayNight {
     this.sun.shadow.camera.bottom = -s;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.radius = mobile ? 3 : 6;   // soft, milky penumbra (PCFSoft)
     scene.add(this.sun);
     scene.add(this.sun.target);
 
