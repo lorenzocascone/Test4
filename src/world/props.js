@@ -10,6 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { fibonacciSphere, alignToNormal } from '../utils/math.js';
 import { clayNormalTexture } from '../utils/textures.js';
+import { injectTranslucency } from '../utils/shaders.js';
 
 // Soft matte clay material with the shared hand-pressed normal micro-texture.
 function clayMat(opts = {}) {
@@ -97,7 +98,8 @@ export class Props {
 
   // Inject a cheap GPU wind sway: top of the model (local +Y) leans on a sine
   // wave. `yBias` lifts small/centred geometry (flower heads) so they move too.
-  _applyWind(material, intensity, yBias = 0) {
+  // Also folds in the subsurface translucency term (one combined onBeforeCompile).
+  _applyWind(material, intensity, yBias = 0, sss = 0.45) {
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.windUniforms.uTime;
       shader.uniforms.uWind = { value: intensity };
@@ -118,11 +120,12 @@ export class Props {
            transformed.x += sin(uTime * 1.6 + aPhase) * uWind * _h;
            transformed.z += cos(uTime * 1.3 + aPhase) * uWind * 0.5 * _h;`
         );
+      if (sss > 0) injectTranslucency(shader, { thickness: sss, power: 3.0 });
     };
     // Unique cache key per wind material so three compiles a distinct program
     // (running onBeforeCompile + its own uniforms) and never reuses a non-wind
     // program from an identical-looking material (rocks/trunks/stems).
-    const key = `tinyworld-wind-${intensity}-${yBias}`;
+    const key = `tinyworld-wind-${intensity}-${yBias}-${sss}`;
     material.customProgramCacheKey = () => key;
   }
 
@@ -275,7 +278,12 @@ export class Props {
         gp.getZ(i) * (0.8 + Math.random() * 0.5));
     }
     geo.computeVertexNormals();
-    const mat = clayMat({ vertexColors: true, roughness: 1 });
+    // Faint clearcoat = the oily sheen of handled modelling clay.
+    const mat = new THREE.MeshPhysicalMaterial({
+      vertexColors: true, roughness: 0.95, metalness: 0, envMapIntensity: 0.35,
+      clearcoat: 0.25, clearcoatRoughness: 0.6,
+      normalMap: clayNormalTexture(), normalScale: new THREE.Vector2(0.22, 0.22),
+    });
     const rocks = new THREE.InstancedMesh(geo, mat, n);
     const colors = new Float32Array(n * 3);
     // rock colour set depends on the biome it sits in

@@ -35,10 +35,10 @@ export const CONFIG = {
 
   // --- camera --------------------------------------------------------------
   camera: {
-    distance: 13,
-    height: 6.5,
+    distance: 21,         // pulled back to keep framing at the low diorama FOV
+    height: 10,
     followStiffness: 9,   // higher = snappier follow (exp smoothing, fps-independent)
-    fov: 55,
+    fov: 34,              // low FOV compresses perspective → tabletop-diorama look
     lookSensitivity: 0.0042,
   },
 

@@ -29,6 +29,7 @@ import { Character } from './player/character.js';
 import { Controller } from './player/controller.js';
 import { HUD } from './ui/hud.js';
 import { Customizer } from './ui/customize.js';
+import { updateSun } from './utils/shaders.js';
 
 // Cozy storybook grade: warm tint, gentle desaturation, soft vignette, faint
 // film grain — the Pokémon-Concierge warmth on top of the vibrant biomes.
@@ -36,9 +37,10 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
-    uWarm: { value: new THREE.Color(1.06, 1.0, 0.92) },
-    uSat: { value: 0.9 },
-    uVignette: { value: 0.32 },
+    uWarm: { value: new THREE.Color(1.07, 1.0, 0.9) },
+    uSat: { value: 1.18 },        // >1 = punchier, sunny tropical
+    uContrast: { value: 1.12 },
+    uVignette: { value: 0.34 },
     uGrain: { value: 0.05 },
   },
   vertexShader: /* glsl */`
@@ -47,24 +49,26 @@ const GradeShader = {
   `,
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
-    uniform float uTime, uSat, uVignette, uGrain;
+    uniform float uTime, uSat, uContrast, uVignette, uGrain;
     uniform vec3 uWarm;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       // warm tint
       c.rgb *= uWarm;
-      // gentle desaturation toward luminance
+      // saturation (toward/away from luminance)
       float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
       c.rgb = mix(vec3(l), c.rgb, uSat);
+      // contrast S-curve around mid grey
+      c.rgb = (c.rgb - 0.5) * uContrast + 0.5;
       // soft vignette
       vec2 d = vUv - 0.5;
-      float vig = smoothstep(0.85, 0.25, dot(d, d) * 2.4);
+      float vig = smoothstep(0.9, 0.22, dot(d, d) * 2.4);
       c.rgb *= mix(1.0 - uVignette, 1.0, vig);
       // faint animated grain
       float g = fract(sin(dot(vUv * vec2(uTime + 1.0, uTime + 2.0), vec2(12.9898, 78.233))) * 43758.5453);
       c.rgb += (g - 0.5) * uGrain;
-      gl_FragColor = c;
+      gl_FragColor = vec4(max(c.rgb, 0.0), c.a);
     }
   `,
 };
@@ -86,7 +90,7 @@ class Game {
     this._setupRenderer();
     this._setupScene();
     await this._buildWorld();
-    this._setupPostFX();
+    await this._setupPostFX();
     this._setupPlayer();
     this._setupUI();
     window.addEventListener('resize', () => this._onResize());
@@ -107,7 +111,8 @@ class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // VSM gives soft, blurred shadow edges (no pixel-stairs) on desktop.
+    this.renderer.shadowMap.type = this.isMobile ? THREE.PCFSoftShadowMap : THREE.VSMShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -174,25 +179,26 @@ class Game {
     await step(1.0, 'Ready!');
   }
 
-  _setupPostFX() {
+  async _setupPostFX() {
     const w = window.innerWidth, h = window.innerHeight;
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    // Tilt-shift: a tasteful depth-of-field focused on the player makes the
-    // world feel like a cozy little diorama. (Desktop only — it's the priciest.)
     if (!this.isMobile) {
+      // SSAO grounds objects + darkens clay-seam crevices.
+      await this._addAO(w, h);
+      // Extreme tilt-shift: razor-sharp subject in a sea of creamy bokeh.
       this.bokeh = new BokehPass(this.scene, this.camera, {
-        focus: CONFIG.camera.distance, aperture: 0.0006, maxblur: 0.006, width: w, height: h,
+        focus: CONFIG.camera.distance, aperture: 0.0022, maxblur: 0.012, width: w, height: h,
       });
       this.composer.addPass(this.bokeh);
     }
 
-    // Softer, gentler bloom than before.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.38, 0.8, 0.78);
+    // Gentle bloom.
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.34, 0.8, 0.8);
     this.composer.addPass(this.bloom);
 
-    // Warm cozy grade (grain only on desktop).
+    // Punchy sunny-tropical grade (grain only on desktop).
     this.grade = new ShaderPass(GradeShader);
     this.grade.uniforms.uGrain.value = this.isMobile ? 0.0 : 0.05;
     this.composer.addPass(this.grade);
@@ -201,6 +207,27 @@ class Game {
       this.composer.addPass(new SMAAPass(w * this.renderer.getPixelRatio(), h * this.renderer.getPixelRatio()));
     }
     this.composer.addPass(new OutputPass());
+  }
+
+  // Ambient occlusion — prefer GTAO, fall back to SSAO, else skip (dynamic import
+  // so a missing CDN module degrades gracefully instead of breaking the load).
+  async _addAO(w, h) {
+    try {
+      const { GTAOPass } = await import('three/addons/postprocessing/GTAOPass.js');
+      const ao = new GTAOPass(this.scene, this.camera, w, h);
+      if (GTAOPass.OUTPUT) ao.output = GTAOPass.OUTPUT.Default; // composite AO, not debug view
+      try { ao.updateGtaoMaterial?.({ radius: 2.0, scale: 1.0, samples: 16, distanceExponent: 1.0, thickness: 1.0 }); } catch (_) {}
+      this.composer.addPass(ao);
+      this.ao = ao;
+      return;
+    } catch (e) { console.warn('GTAO unavailable, trying SSAO…', e); }
+    try {
+      const { SSAOPass } = await import('three/addons/postprocessing/SSAOPass.js');
+      const ao = new SSAOPass(this.scene, this.camera, w, h);
+      ao.kernelRadius = 8; ao.minDistance = 0.002; ao.maxDistance = 0.1;
+      this.composer.addPass(ao);
+      this.ao = ao;
+    } catch (e) { console.warn('AO unavailable; skipping.', e); }
   }
 
   // Pick a pleasant land spot (above sea level, not a steep peak) to start on.
@@ -222,6 +249,11 @@ class Game {
   _setupPlayer() {
     this.character = new Character();
     this.scene.add(this.character.root);
+
+    // Studio rim light — a cool back-light that tracks behind the goblin to pop
+    // it off the globe (the third point of the 3-point rig; sun=key, IBL=fill).
+    this.rimLight = new THREE.DirectionalLight('#cfe0ff', 0.0);
+    this.scene.add(this.rimLight, this.rimLight.target);
 
     this.controller = new Controller(this.planet, this.character, this.camera, this.renderer.domElement, null);
     this.controller.position.copy(this._findSpawn());
@@ -297,6 +329,18 @@ class Game {
     this.state = 'playing';
   }
 
+  // Keep the rim light behind the goblin (relative to the camera), lifted along
+  // the local up, aimed at the character — a cool back-rim that pops it out.
+  _updateRimLight() {
+    if (!this.rimLight) return;
+    const p = this.controller.worldPosition;
+    const radial = p.clone().normalize();
+    const toChar = p.clone().sub(this.camera.position).normalize();
+    this.rimLight.position.copy(p).addScaledVector(toChar, 10).addScaledVector(radial, 7);
+    this.rimLight.target.position.copy(p);
+    this.rimLight.intensity = 0.85;
+  }
+
   _onCollect() {
     this.gems++;
     this.hud.setGems(this.gems);
@@ -333,12 +377,14 @@ class Game {
     this.clouds.update(dt);
     this.sky.update(this.elapsed);
     this.dayNight.update(dt);
+    updateSun(this.dayNight);          // feed the SSS/translucency shaders
     this.particles.update(dt);
     if (this.grade) this.grade.uniforms.uTime.value = this.elapsed;
 
     if (this.state === 'playing') {
       this.controller.update(dt, this.elapsed, animDt, animElapsed);
       this.collectibles.update(animDt, animElapsed, this.controller.worldPosition);
+      this._updateRimLight();
       if (this.bokeh?.uniforms?.focus) this.bokeh.uniforms.focus.value = this.camera.position.distanceTo(this.controller.worldPosition);
       // periodic HUD time refresh
       this._todAccum = (this._todAccum || 0) + dt;
@@ -347,12 +393,13 @@ class Game {
         this.hud.setTime(this.dayNight.label(), this.dayNight.dayCount);
       }
     } else {
-      // start-screen slow orbit of the planet
+      // start-screen slow orbit of the planet (pulled back for the low FOV)
       this._introAngle += dt * 0.12;
-      const r = CONFIG.planet.radius + 34;
-      this.camera.position.set(Math.cos(this._introAngle) * r, 14 + Math.sin(this._introAngle * 0.6) * 6, Math.sin(this._introAngle) * r);
+      const r = CONFIG.planet.radius + 95;
+      this.camera.position.set(Math.cos(this._introAngle) * r, 30 + Math.sin(this._introAngle * 0.6) * 12, Math.sin(this._introAngle) * r);
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(0, 0, 0);
+      if (this.bokeh?.uniforms?.focus) this.bokeh.uniforms.focus.value = this.camera.position.length();
       this.collectibles.update(animDt, animElapsed, null);
     }
 
