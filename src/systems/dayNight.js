@@ -62,9 +62,11 @@ export class DayNight {
     this.sun.shadow.camera.right = s;
     this.sun.shadow.camera.top = s;
     this.sun.shadow.camera.bottom = -s;
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.04;
-    this.sun.shadow.radius = mobile ? 3 : 6;   // soft, milky penumbra (PCFSoft)
+    this.sun.shadow.bias = mobile ? -0.0004 : -0.0001;
+    this.sun.shadow.normalBias = 0.05;
+    // Soft, blurred edges — VSM on desktop (set on the renderer), PCFSoft on mobile.
+    this.sun.shadow.radius = mobile ? 3 : 9;
+    this.sun.shadow.blurSamples = mobile ? 8 : 25;
     scene.add(this.sun);
     scene.add(this.sun.target);
 

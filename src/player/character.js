@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { clayNormalTexture } from '../utils/textures.js';
+import { applyTranslucency } from '../utils/shaders.js';
 
 export class Character {
   constructor() {
@@ -17,12 +18,15 @@ export class Character {
     this.root.add(this.rig);
 
     const ns = new THREE.Vector2(0.28, 0.28);
-    // Soft felt/clay skin — physical sheen reads as a hand-made figurine.
+    // Soft felt/clay skin — physical sheen + faint clearcoat (oily handled clay),
+    // and a subsurface glow so light bleeds through thin ears/nose.
     this.bodyMat = new THREE.MeshPhysicalMaterial({
       color: '#8ab84e', roughness: 0.88, metalness: 0, envMapIntensity: 0.4,
       sheen: 0.6, sheenRoughness: 0.85, sheenColor: new THREE.Color('#ffffff'),
+      clearcoat: 0.3, clearcoatRoughness: 0.55,
       normalMap: clayNormalTexture(), normalScale: ns,
     });
+    applyTranslucency(this.bodyMat, { thickness: 0.6, power: 2.5 });
     this.accentMat = new THREE.MeshStandardMaterial({
       color: '#7a4a2b', roughness: 0.92, metalness: 0, envMapIntensity: 0.35,
       normalMap: clayNormalTexture(), normalScale: ns,
