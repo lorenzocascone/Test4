@@ -23,6 +23,7 @@ import { Clouds } from './world/clouds.js';
 import { Sky } from './world/sky.js';
 import { DayNight } from './systems/dayNight.js';
 import { Particles } from './systems/particles.js';
+import { Droplets } from './systems/droplets.js';
 import { Collectibles } from './systems/collectibles.js';
 import { Audio } from './systems/audio.js';
 import { Character } from './player/character.js';
@@ -175,6 +176,8 @@ class Game {
     await step(0.92, 'Scattering gems…');
     this.particles = new Particles(700);
     this.scene.add(this.particles.points);
+    this.droplets = new Droplets(48);
+    this.scene.add(this.droplets.mesh);
 
     await step(1.0, 'Ready!');
   }
@@ -262,7 +265,7 @@ class Game {
     this.controller.facing.copy(this.controller.heading);
     this.controller.snapCamera();
     this.controller.onStep((pos, normal) => this.particles.dust(pos, normal));
-    this.controller.onSplash((pos, up) => this.particles.splash(pos, up));
+    this.controller.onSplash((pos, up) => this.droplets.splash(pos, up));
 
     this.collectibles = new Collectibles(this.planet, this.particles, (gem) => this._onCollect(gem));
     this.scene.add(this.collectibles.group);
@@ -379,6 +382,7 @@ class Game {
     this.dayNight.update(dt);
     updateSun(this.dayNight);          // feed the SSS/translucency shaders
     this.particles.update(dt);
+    this.droplets.update(dt);
     if (this.grade) this.grade.uniforms.uTime.value = this.elapsed;
 
     if (this.state === 'playing') {
