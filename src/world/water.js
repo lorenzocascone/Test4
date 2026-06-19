@@ -34,10 +34,11 @@ export class Water {
           '#include <begin_vertex>',
           `#include <begin_vertex>
            vec3 d = normalize(position);
-           float wave = sin(d.x*22.0 + uTime*1.6) * 0.5
-                      + sin(d.y*18.0 - uTime*1.2) * 0.5
-                      + sin(d.z*26.0 + uTime*1.9) * 0.5;
-           transformed += d * wave * 0.12;
+           // gentle, slow swell (was far too choppy)
+           float wave = sin(d.x*9.0 + uTime*0.5)
+                      + sin(d.y*7.0 - uTime*0.35)
+                      + sin(d.z*11.0 + uTime*0.45);
+           transformed += d * wave * 0.03;
            vWorldDir = d;`
         );
       shader.fragmentShader = shader.fragmentShader
@@ -48,14 +49,13 @@ export class Water {
            varying vec3 vWorldDir;`
         )
         .replace(
-          '#include <emissivemap_fragment>',
-          `#include <emissivemap_fragment>
-           // animated sparkle/foam shimmer driven by the surface direction
-           float shimmer = sin(vWorldDir.x*40.0 + uTime*2.0)
-                         * sin(vWorldDir.y*36.0 - uTime*1.5)
-                         * sin(vWorldDir.z*44.0 + uTime*1.7);
-           shimmer = max(shimmer, 0.0);
-           totalEmissiveRadiance += vec3(0.30, 0.55, 0.75) * (0.12 + shimmer * 0.4);`
+          '#include <color_fragment>',
+          `#include <color_fragment>
+           // soft lighter-blue "clay" streaks that drift slowly — a plasticine
+           // shimmer, not a glowing sparkle.
+           float streak = sin(vWorldDir.y * 26.0 + vWorldDir.x * 8.0 + uTime * 0.4);
+           streak = smoothstep(0.55, 0.95, streak);
+           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.78, 0.96), streak * 0.55);`
         );
     };
 
