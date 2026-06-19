@@ -146,8 +146,8 @@ export class Props {
       const g = new THREE.IcosahedronGeometry(r, fd);
       g.translate(x, y, z); return g;
     };
-    const cone = (r, h, y, seg = 10) => {
-      const g = new THREE.ConeGeometry(r, h, seg);
+    const cone = (r, h, y, seg = 18) => {
+      const g = new THREE.ConeGeometry(r, h, seg, 4); // more segments → soft, not faceted
       g.translate(0, y, 0); return g;
     };
     const cap = (r, len, x, y, z, seg = 6) => {
@@ -256,6 +256,7 @@ export class Props {
       _tmpQuat.setFromAxisAngle(up, this.rng() * Math.PI * 2); // random yaw
       _quat.premultiply(_tmpQuat);
       const s = arch.scale[0] + this.rng() * arch.scale[1];
+      _pos.addScaledVector(p.dir, -0.3 * s); // bed the base below the surface
       // per-axis jitter → no two read as a perfect symmetric copy
       _scale.set(s * (0.9 + this.rng() * 0.18), s * (0.92 + this.rng() * 0.25), s * (0.9 + this.rng() * 0.18));
       _mat4.compose(_pos, _quat, _scale);
@@ -277,16 +278,10 @@ export class Props {
   _buildRocks() {
     const places = this._placements(CONFIG.props.rocks, { maxElev: 0.95, maxSlope: 0.6 });
     const n = places.length;
-    const geo = new THREE.DodecahedronGeometry(0.5, 0);
-    // jitter vertices for a chunkier look
-    const gp = geo.attributes.position;
-    for (let i = 0; i < gp.count; i++) {
-      gp.setXYZ(i,
-        gp.getX(i) * (0.8 + Math.random() * 0.5),
-        gp.getY(i) * (0.7 + Math.random() * 0.4),
-        gp.getZ(i) * (0.8 + Math.random() * 0.5));
-    }
-    geo.computeVertexNormals();
+    // A welded, position-displaced boulder: moldGeometry keeps it a single
+    // coherent lumpy mass (the old per-vertex jitter tore non-indexed faces apart).
+    const geo = moldGeometry(new THREE.IcosahedronGeometry(0.6, 1), { amp: 0.22, freq: 2.6, seed: 71 });
+    geo.scale(1, 0.8, 1); // slightly squashed
     // Faint clearcoat = the oily sheen of handled modelling clay.
     const mat = new THREE.MeshPhysicalMaterial({
       vertexColors: true, roughness: 0.95, metalness: 0, envMapIntensity: 0.35,
@@ -306,11 +301,11 @@ export class Props {
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
-      _pos.addScaledVector(p.normal, 0.1);
       _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.normal);
       _tmpQuat.setFromAxisAngle(p.normal, this.rng() * Math.PI * 2);
       _quat.multiply(_tmpQuat);
       const s = 0.7 + this.rng() * 2.0; // range from pebbles to big boulders
+      _pos.addScaledVector(p.dir, -0.3 * s); // bed the boulder into the ground
       _scale.set(s, s * (0.7 + this.rng() * 0.5), s);
       _mat4.compose(_pos, _quat, _scale);
       rocks.setMatrixAt(i, _mat4);
@@ -345,6 +340,7 @@ export class Props {
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
+      _pos.addScaledVector(p.dir, -0.1); // root the stem just under the surface
       _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.dir); // grow radially up
       const s = 0.7 + this.rng() * 0.8;
       _scale.set(s, s, s);
@@ -381,6 +377,7 @@ export class Props {
     for (let i = 0; i < n; i++) {
       const p = places[i];
       this.planet.surfacePoint(p.dir, _pos);
+      _pos.addScaledVector(p.dir, -0.08); // tuck the tuft base under the surface
       _quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p.dir); // grow radially up
       const s = 0.6 + this.rng() * 1.0;
       _scale.set(s, s * (1 + this.rng()), s);
