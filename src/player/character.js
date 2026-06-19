@@ -5,8 +5,12 @@
 // ----------------------------------------------------------------------------
 
 import * as THREE from 'three';
-import { clayNormalTexture } from '../utils/textures.js';
+import { clayNormalTexture, clayRoughnessTexture, clayAlbedoTexture } from '../utils/textures.js';
+import { moldGeometry } from '../utils/geometry.js';
 import { applyTranslucency } from '../utils/shaders.js';
+
+// hand-mold a primitive into lumpy clay (one-time at build)
+const mold = (g, amp) => moldGeometry(g, { amp, freq: 5, seed: Math.random() * 1000 });
 
 export class Character {
   constructor() {
@@ -19,17 +23,20 @@ export class Character {
 
     const ns = new THREE.Vector2(0.28, 0.28);
     // Soft felt/clay skin — physical sheen + faint clearcoat (oily handled clay),
-    // and a subsurface glow so light bleeds through thin ears/nose.
+    // a subsurface glow so light bleeds through thin ears/nose, plus the kneaded
+    // albedo + roughness micro-detail.
     this.bodyMat = new THREE.MeshPhysicalMaterial({
-      color: '#8ab84e', roughness: 0.88, metalness: 0, envMapIntensity: 0.4,
+      color: '#8ab84e', roughness: 0.8, metalness: 0, envMapIntensity: 0.4,
       sheen: 0.6, sheenRoughness: 0.85, sheenColor: new THREE.Color('#ffffff'),
       clearcoat: 0.3, clearcoatRoughness: 0.55,
       normalMap: clayNormalTexture(), normalScale: ns,
+      roughnessMap: clayRoughnessTexture(), map: clayAlbedoTexture(),
     });
     applyTranslucency(this.bodyMat, { thickness: 0.6, power: 2.5 });
     this.accentMat = new THREE.MeshStandardMaterial({
-      color: '#7a4a2b', roughness: 0.92, metalness: 0, envMapIntensity: 0.35,
+      color: '#7a4a2b', roughness: 0.85, metalness: 0, envMapIntensity: 0.35,
       normalMap: clayNormalTexture(), normalScale: ns,
+      roughnessMap: clayRoughnessTexture(), map: clayAlbedoTexture(),
     });
     this.skinMat = new THREE.MeshStandardMaterial({ color: '#ffe0bd', roughness: 0.85 });
     this.eyeMat = new THREE.MeshStandardMaterial({ color: '#2b2b33', roughness: 0.25 });
@@ -47,7 +54,7 @@ export class Character {
       [0.02, 0.00], [0.30, 0.02], [0.42, 0.18], [0.40, 0.42],
       [0.31, 0.66], [0.22, 0.82], [0.12, 0.90],
     ].map((p) => new THREE.Vector2(p[0], p[1]));
-    const torsoGeo = new THREE.LatheGeometry(torsoProfile, 14);
+    const torsoGeo = mold(new THREE.LatheGeometry(torsoProfile, 18), 0.018);
     this.body = new THREE.Mesh(torsoGeo, skin);
     this.body.position.y = 0.62;
     this.body.rotation.x = 0.12;        // slight forward hunch
@@ -71,13 +78,13 @@ export class Character {
     this.rig.add(this.head);
     this.headBaseY = 1.72;
 
-    const skullGeo = new THREE.IcosahedronGeometry(0.42, 2);
+    const skullGeo = mold(new THREE.IcosahedronGeometry(0.42, 3), 0.02);
     const skull = new THREE.Mesh(skullGeo, skin);
     skull.scale.set(1.05, 0.95, 1.0);
     skull.castShadow = true;
     this.head.add(skull);
     // Jaw — pushes the lower face forward for an underbite
-    const jaw = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), skin);
+    const jaw = new THREE.Mesh(mold(new THREE.IcosahedronGeometry(0.3, 2), 0.015), skin);
     jaw.scale.set(1.0, 0.6, 1.05);
     jaw.position.set(0, -0.22, 0.08);
     this.head.add(jaw);
