@@ -67,7 +67,7 @@ export function clayNormalTexture() {
   const rnd = () => { rs = (rs * 1103515245 + 12345) & 0x7fffffff; return rs / 0x7fffffff; };
   // a handful of concentric whorls (fingerprints)
   for (let w = 0; w < 5; w++) {
-    const cx = rnd() * size, cy = rnd() * size, ringFreq = 0.5 + rnd() * 0.7, amp = 0.06 + rnd() * 0.05;
+    const cx = rnd() * size, cy = rnd() * size, ringFreq = 0.5 + rnd() * 0.7, amp = 0.085 + rnd() * 0.07;
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
       const d = Math.hypot(x - cx, y - cy);
       hh[y * size + x] += Math.sin(d * ringFreq) * amp * Math.exp(-d / 90);
@@ -75,7 +75,7 @@ export function clayNormalTexture() {
   }
   // a few long tool streaks
   for (let s = 0; s < 6; s++) {
-    const ang = rnd() * Math.PI, ca = Math.cos(ang), sa = Math.sin(ang), ph = rnd() * 6.28, amp = 0.05 + rnd() * 0.04;
+    const ang = rnd() * Math.PI, ca = Math.cos(ang), sa = Math.sin(ang), ph = rnd() * 6.28, amp = 0.07 + rnd() * 0.06;
     const sf = 0.05 + rnd() * 0.05;
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
       hh[y * size + x] += Math.sin((x * ca + y * sa) * sf + ph) * amp * 0.4;
@@ -87,7 +87,7 @@ export function clayNormalTexture() {
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(size, size);
   const at = (x, y) => hh[(((y % size) + size) % size) * size + (((x % size) + size) % size)];
-  const strength = 2.2;
+  const strength = 3.3;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       // Sobel-ish gradient → tangent-space normal
@@ -146,8 +146,8 @@ export function clayAlbedoTexture() {
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(size, size);
   for (let i = 0; i < size * size; i++) {
-    // near-white centre (a multiplicative map can only darken), gentle patches
-    const v = Math.round(246 + (h[i] - 0.5) * 30);
+    // near-white centre (a multiplicative map can only darken), kneaded patches
+    const v = Math.round(240 + (h[i] - 0.5) * 48);
     img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
     img.data[i * 4 + 3] = 255;
   }

@@ -21,7 +21,7 @@ export class Character {
     this.rig = new THREE.Group();
     this.root.add(this.rig);
 
-    const ns = new THREE.Vector2(0.28, 0.28);
+    const ns = new THREE.Vector2(0.42, 0.42);
     // Soft felt/clay skin — physical sheen + faint clearcoat (oily handled clay),
     // a subsurface glow so light bleeds through thin ears/nose, plus the kneaded
     // albedo + roughness micro-detail.
@@ -69,63 +69,73 @@ export class Character {
     neck.scale.set(1, 0.7, 1); neck.position.y = 1.22; neck.castShadow = true;
     this.rig.add(neck);
 
-    // --- Head: a big, egg-ish skull with cheeks (not a bare sphere) --------
+    // --- Head: a big goblin skull — wide crown, broad heavy jaw -------------
     this.head = new THREE.Group();
     this.head.position.y = 1.5;
     this.rig.add(this.head);
     this.headBaseY = 1.5;
 
-    const skull = new THREE.Mesh(blob(0.52, 0.018), skin);
-    skull.scale.set(1.06, 1.0, 1.02);
+    const skull = new THREE.Mesh(blob(0.52, 0.02), skin);
+    skull.scale.set(1.16, 0.94, 1.0);            // wide & a touch flat (pear-ish)
     skull.castShadow = true;
     this.head.add(skull);
-    // round cheeks fill out the lower face
-    const cheekL = new THREE.Mesh(blob(0.22), skin); cheekL.position.set(-0.26, -0.16, 0.2);
-    const cheekR = new THREE.Mesh(blob(0.22), skin); cheekR.position.set(0.26, -0.16, 0.2);
+    // broad, heavy goblin jaw jutting forward (underbite)
+    const jaw = new THREE.Mesh(blob(0.34, 0.016), skin);
+    jaw.scale.set(1.25, 0.6, 1.05); jaw.position.set(0, -0.26, 0.12);
+    jaw.castShadow = true;
+    this.head.add(jaw);
+    // round cheeks
+    const cheekL = new THREE.Mesh(blob(0.2), skin); cheekL.position.set(-0.3, -0.14, 0.2);
+    const cheekR = new THREE.Mesh(blob(0.2), skin); cheekR.position.set(0.3, -0.14, 0.2);
     cheekL.castShadow = cheekR.castShadow = true;
     this.head.add(cheekL, cheekR);
-    // soft rounded brow ridge
-    const brow = new THREE.Mesh(blob(0.16), skin);
-    brow.scale.set(2.1, 0.55, 0.7); brow.position.set(0, 0.17, 0.34);
+    // heavy, low brow ridge for a scowl
+    const brow = new THREE.Mesh(blob(0.17), skin);
+    brow.scale.set(2.4, 0.6, 0.85); brow.position.set(0, 0.1, 0.36);
     this.head.add(brow);
 
-    // Short, rounded goblin ears (a soft point, not a sharp cone).
-    const ear = () => { const e = new THREE.Mesh(blob(0.15), skin); e.castShadow = true; return e; };
+    // Big soft-pointed ears, swept out and back.
+    const ear = () => { const e = new THREE.Mesh(blob(0.2, 0.014), skin); e.castShadow = true; return e; };
     const earL = ear(), earR = ear();
-    earL.scale.set(0.55, 1.1, 0.4); earL.position.set(-0.52, 0.1, -0.02); earL.rotation.z = 0.5;
-    earR.scale.set(0.55, 1.1, 0.4); earR.position.set(0.52, 0.1, -0.02); earR.rotation.z = -0.5;
+    earL.scale.set(0.5, 1.55, 0.42); earL.position.set(-0.55, 0.13, -0.06); earL.rotation.set(-0.25, 0, 0.7);
+    earR.scale.set(0.5, 1.55, 0.42); earR.position.set(0.55, 0.13, -0.06); earR.rotation.set(-0.25, 0, -0.7);
     this.head.add(earL, earR);
 
-    // Soft potato nose (a rounded blob, not a cone).
-    const nose = new THREE.Mesh(blob(0.14), skin);
-    nose.scale.set(0.95, 0.85, 1.15); nose.position.set(0, -0.04, 0.46);
+    // Bulbous, slightly hooked nose (main bulb + a drooping tip).
+    const nose = new THREE.Mesh(blob(0.16), skin);
+    nose.scale.set(0.95, 0.9, 1.2); nose.position.set(0, -0.02, 0.48);
     nose.castShadow = true;
-    this.head.add(nose);
+    const noseTip = new THREE.Mesh(blob(0.11), skin);
+    noseTip.scale.set(0.9, 0.8, 1.0); noseTip.position.set(0, -0.13, 0.52); // droop → hook
+    this.head.add(nose, noseTip);
 
-    // Eyes — yellow sclera + dark pupil, grouped so they can blink.
+    // Eyes — beady, set low under the heavy brow.
     const scleraMat = new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 0.4, emissive: '#5a4000', emissiveIntensity: 0.3 });
     const makeEye = (x) => {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 14), scleraMat));
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), this.eyeMat);
-      pupil.position.z = 0.08;
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 14), scleraMat));
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), this.eyeMat);
+      pupil.position.z = 0.075;
       g.add(pupil);
-      g.position.set(x, 0.05, 0.4);
+      g.position.set(x, 0.0, 0.41);
       return g;
     };
-    this.eyeL = makeEye(-0.18);
-    this.eyeR = makeEye(0.18);
+    this.eyeL = makeEye(-0.17);
+    this.eyeR = makeEye(0.17);
     this.head.add(this.eyeL, this.eyeR);
 
-    // Soft mouth + two tiny rounded tusks (gentle underbite).
-    const mouth = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.18, 3, 6), this.eyeMat);
-    mouth.rotation.z = Math.PI / 2; mouth.position.set(0, -0.26, 0.42);
+    // Wider mouth + crooked tusks and a lower tooth.
+    const mouth = new THREE.Mesh(new THREE.CapsuleGeometry(0.028, 0.24, 3, 6), this.eyeMat);
+    mouth.rotation.z = Math.PI / 2; mouth.position.set(0, -0.3, 0.42);
     this.head.add(mouth);
     const toothMat = new THREE.MeshStandardMaterial({ color: '#fffdf0', roughness: 0.5 });
-    const tooth = () => new THREE.Mesh(mold(new THREE.IcosahedronGeometry(0.045, 2), 0.004), toothMat);
-    const tuskL = tooth(), tuskR = tooth();
-    tuskL.position.set(-0.07, -0.2, 0.44); tuskR.position.set(0.07, -0.2, 0.44);
-    this.head.add(tuskL, tuskR);
+    const tooth = (r) => new THREE.Mesh(mold(new THREE.IcosahedronGeometry(r, 2), 0.004), toothMat);
+    const tuskL = tooth(0.055), tuskR = tooth(0.055);
+    tuskL.position.set(-0.085, -0.25, 0.46); tuskL.scale.y = 1.4;
+    tuskR.position.set(0.085, -0.25, 0.46); tuskR.scale.y = 1.4;
+    const lowTooth = tooth(0.035);
+    lowTooth.position.set(0.02, -0.36, 0.44);
+    this.head.add(tuskL, tuskR, lowTooth);
 
     // --- Arms: SHORT & chunky, shoulders joined by a deltoid blob ----------
     const buildArm = (side) => {
@@ -145,7 +155,7 @@ export class Character {
       elbow.add(fore, hand);
       shoulder.add(elbow);
 
-      shoulder.position.set(side * 0.32, 1.04, 0);
+      shoulder.position.set(side * 0.36, 1.05, 0);
       return { shoulder, elbow };
     };
     const aL = buildArm(-1), aR = buildArm(1);
@@ -156,7 +166,7 @@ export class Character {
     // don't read as disconnected.
     [-1, 1].forEach((side) => {
       const d = new THREE.Mesh(blob(0.21), skin);
-      d.position.set(side * 0.3, 1.06, 0); d.castShadow = true;
+      d.position.set(side * 0.34, 1.06, 0); d.castShadow = true;
       this.rig.add(d);
     });
 
@@ -269,10 +279,12 @@ export class Character {
     this._kneeR.rotation.x = 0.05 + Math.max(0, -sw) * 0.95 * amp;
 
     // ARMS: opposite swing to the legs, with a relaxed, pumping elbow.
-    this.armL.rotation.x = -sw * 0.5 * amp;
-    this.armR.rotation.x = sw * 0.5 * amp;
-    this.armL.rotation.z = 0.16;
-    this.armR.rotation.z = -0.16;
+    // idle arm sway so he's not dead-still; splayed out to clear the wide belly
+    const idle = Math.sin(elapsed * 1.6) * 0.06 * (1 - amp);
+    this.armL.rotation.x = -sw * 0.5 * amp + idle;
+    this.armR.rotation.x = sw * 0.5 * amp - idle;
+    this.armL.rotation.z = 0.42;
+    this.armR.rotation.z = -0.42;
     this._elbowL.rotation.x = -(0.3 + Math.max(0, -sw) * 0.55 * amp); // bend forward
     this._elbowR.rotation.x = -(0.3 + Math.max(0, sw) * 0.55 * amp);
 

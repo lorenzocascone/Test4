@@ -21,7 +21,7 @@ function clayMat(opts = {}) {
     metalness: 0.0,
     envMapIntensity: 0.35,
     normalMap: clayNormalTexture(),
-    normalScale: new THREE.Vector2(0.22, 0.22),
+    normalScale: new THREE.Vector2(0.4, 0.4),
     roughnessMap: clayRoughnessTexture(),
     map: clayAlbedoTexture(),
     ...opts,
