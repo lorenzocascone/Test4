@@ -148,23 +148,24 @@ export class Planet {
     const slope = 1 - clamp(normal.dot(dir), 0, 1); // 0 flat .. ~1 steep
     const p = this.palette;
 
-    // Continuous climate fields → blend biome colours smoothly (no hard PS1-style
-    // boundaries). Same fields the discrete classifier uses, but lerped here.
+    // Climate fields, but with HARD (near-step) transitions so each biome is a
+    // solid block of "clay" with crisp seams — different colours of plasticine,
+    // not smooth gradients.
     const lat = Math.abs(dir.y);
     let temp = 1 - Math.pow(lat, 1.4);
     temp -= elev * 0.45;
     temp += this.moistNoise.fbm(dir.x * 1.2 + 10, dir.y * 1.2, dir.z * 1.2, { octaves: 2 }) * 0.08;
     const moist = this.moistureAt(dir);
-    const hotDry = smoothstep(0.6, 0.82, temp) * smoothstep(0.52, 0.32, moist);
+    const hotDry = smoothstep(0.66, 0.7, temp) * smoothstep(0.46, 0.42, moist);
 
     color.copy(p.grassland);
-    color.lerp(p.forest, smoothstep(0.42, 0.62, moist) * (1 - smoothstep(0.62, 0.8, temp)));
+    color.lerp(p.forest, smoothstep(0.5, 0.53, moist) * (1 - smoothstep(0.66, 0.7, temp)));
     color.lerp(p.desertSand, hotDry);
-    color.lerp(p.tundra, smoothstep(0.4, 0.26, temp));
-    color.lerp(p.snow, smoothstep(0.24, 0.1, temp));
-    color.lerp(p.sand, smoothstep(seaT + 0.06, seaT + 0.005, elev));   // beach
-    color.lerp(p.rock, smoothstep(0.6, 0.76, elev));                   // highlands
-    color.lerp(p.snow, smoothstep(0.82, 0.96, elev));                  // peaks
+    color.lerp(p.tundra, smoothstep(0.35, 0.32, temp));
+    color.lerp(p.snow, smoothstep(0.18, 0.15, temp));
+    color.lerp(p.sand, smoothstep(seaT + 0.035, seaT + 0.02, elev));   // thin crisp beach
+    color.lerp(p.rock, smoothstep(0.66, 0.69, elev));                  // highlands
+    color.lerp(p.snow, smoothstep(0.86, 0.89, elev));                  // peaks
 
     // Desert dune banding (scaled by how desert-y this spot is).
     if (hotDry > 0.05) {
@@ -172,9 +173,9 @@ export class Planet {
       color.lerp(p.desertDark, Math.max(0, band) * 0.28 * hotDry);
     }
 
-    // Rock breaks through on steep slopes (not in water/beach).
-    if (slope > 0.35 && elev > seaT + 0.05) {
-      color.lerp(p.rockDark, smoothstep(0.35, 0.7, slope) * 0.7);
+    // Rock breaks through on steep slopes (crisp patch, not a fade).
+    if (slope > 0.42 && elev > seaT + 0.05) {
+      color.lerp(p.rockDark, smoothstep(0.42, 0.48, slope));
     }
 
     // Subtle per-vertex tint variation for a hand-painted feel.

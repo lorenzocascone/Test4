@@ -9,13 +9,14 @@ export class Water {
   constructor(seaRadius) {
     const geo = new THREE.IcosahedronGeometry(seaRadius, 32);
 
+    // Opaque vibrant blue "plasticine" sea — a hard waterline against the land,
+    // like a different colour of clay rather than a translucent fade.
     const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#4aa3d8'),
-      transparent: true,
-      opacity: 0.85,
-      roughness: 0.35,
+      color: new THREE.Color('#1496d6'),
+      transparent: false,
+      roughness: 0.55,
       metalness: 0.0,
-      envMapIntensity: 0.5,
+      envMapIntensity: 0.4,
     });
 
     this.uniforms = { uTime: { value: 0 } };
@@ -60,7 +61,8 @@ export class Water {
 
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'water';
-    this.mesh.renderOrder = 1;
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
   }
 
   update(dt, elapsed) {

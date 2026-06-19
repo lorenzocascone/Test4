@@ -137,21 +137,19 @@ export class Character {
     lowTooth.position.set(0.02, -0.36, 0.44);
     this.head.add(tuskL, tuskR, lowTooth);
 
-    // --- Arms: SHORT & chunky, shoulders joined by a deltoid blob ----------
+    // --- Arms: clearly-readable limbs (slim upper + forearm + small hand) ---
     const buildArm = (side) => {
       const shoulder = new THREE.Group();
-      const upperLen = 0.14;
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, upperLen, 4, 10), skin);
-      upper.position.y = -0.18; upper.castShadow = true;
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.26, 4, 10), skin);
+      upper.position.y = -0.19; upper.castShadow = true;
       shoulder.add(upper);
 
       const elbow = new THREE.Group();
-      elbow.position.y = -0.34;
-      const foreLen = 0.12;
-      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, foreLen, 4, 10), skin);
-      fore.position.y = -0.13; fore.castShadow = true;
-      const hand = new THREE.Mesh(blob(0.17), skin);
-      hand.scale.set(1, 0.9, 0.9); hand.position.y = -0.32; hand.castShadow = true;
+      elbow.position.y = -0.36;
+      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.22, 4, 10), skin);
+      fore.position.y = -0.16; fore.castShadow = true;
+      const hand = new THREE.Mesh(blob(0.12), skin);
+      hand.scale.set(1, 0.92, 0.85); hand.position.y = -0.34; hand.castShadow = true;
       elbow.add(fore, hand);
       shoulder.add(elbow);
 
@@ -165,8 +163,8 @@ export class Character {
     // deltoid blobs (static on the torso) bridge shoulder → body so the arms
     // don't read as disconnected.
     [-1, 1].forEach((side) => {
-      const d = new THREE.Mesh(blob(0.21), skin);
-      d.position.set(side * 0.34, 1.06, 0); d.castShadow = true;
+      const d = new THREE.Mesh(blob(0.15), skin);
+      d.position.set(side * 0.33, 1.05, 0); d.castShadow = true;
       this.rig.add(d);
     });
 
