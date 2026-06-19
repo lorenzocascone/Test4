@@ -146,27 +146,38 @@ export class Planet {
     // Slope from the radius gradient — steeper places get rockier.
     const normal = this.normalAt(dir, 0.02);
     const slope = 1 - clamp(normal.dot(dir), 0, 1); // 0 flat .. ~1 steep
+    const p = this.palette;
 
-    const biome = this._classify(dir, radius, normal);
-    this._biomeColor(biome, color);
+    // Continuous climate fields → blend biome colours smoothly (no hard PS1-style
+    // boundaries). Same fields the discrete classifier uses, but lerped here.
+    const lat = Math.abs(dir.y);
+    let temp = 1 - Math.pow(lat, 1.4);
+    temp -= elev * 0.45;
+    temp += this.moistNoise.fbm(dir.x * 1.2 + 10, dir.y * 1.2, dir.z * 1.2, { octaves: 2 }) * 0.08;
+    const moist = this.moistureAt(dir);
+    const hotDry = smoothstep(0.6, 0.82, temp) * smoothstep(0.52, 0.32, moist);
 
-    // Snow caps fade in toward the highest ground regardless of biome.
-    if (elev > 0.78 && biome !== 'snow') {
-      color.lerp(this.palette.snow, smoothstep(0.78, 0.96, elev) * 0.7);
-    }
-    // Desert dunes get a touch of darker sand banding.
-    if (biome === 'desert') {
+    color.copy(p.grassland);
+    color.lerp(p.forest, smoothstep(0.42, 0.62, moist) * (1 - smoothstep(0.62, 0.8, temp)));
+    color.lerp(p.desertSand, hotDry);
+    color.lerp(p.tundra, smoothstep(0.4, 0.26, temp));
+    color.lerp(p.snow, smoothstep(0.24, 0.1, temp));
+    color.lerp(p.sand, smoothstep(seaT + 0.06, seaT + 0.005, elev));   // beach
+    color.lerp(p.rock, smoothstep(0.6, 0.76, elev));                   // highlands
+    color.lerp(p.snow, smoothstep(0.82, 0.96, elev));                  // peaks
+
+    // Desert dune banding (scaled by how desert-y this spot is).
+    if (hotDry > 0.05) {
       const band = this.warpNoise.fbm(dir.x * 12, dir.y * 12, dir.z * 12, { octaves: 2 });
-      color.lerp(this.palette.desertDark, Math.max(0, band) * 0.3);
+      color.lerp(p.desertDark, Math.max(0, band) * 0.28 * hotDry);
     }
 
     // Rock breaks through on steep slopes (not in water/beach).
     if (slope > 0.35 && elev > seaT + 0.05) {
-      const rockMix = smoothstep(0.35, 0.7, slope);
-      color.lerp(this.palette.rockDark, rockMix * 0.7);
+      color.lerp(p.rockDark, smoothstep(0.35, 0.7, slope) * 0.7);
     }
 
-    // Subtle per-facet tint variation for hand-painted feel.
+    // Subtle per-vertex tint variation for a hand-painted feel.
     const tint = this.warpNoise.fbm(dir.x * 8, dir.y * 8, dir.z * 8, { octaves: 2 }) * 0.05;
     color.offsetHSL(0, 0, tint);
   }
