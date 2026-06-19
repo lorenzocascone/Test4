@@ -9,17 +9,21 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
 import { fibonacciSphere, alignToNormal } from '../utils/math.js';
-import { clayNormalTexture } from '../utils/textures.js';
+import { clayNormalTexture, clayRoughnessTexture, clayAlbedoTexture } from '../utils/textures.js';
+import { moldGeometry } from '../utils/geometry.js';
 import { injectTranslucency } from '../utils/shaders.js';
 
-// Soft matte clay material with the shared hand-pressed normal micro-texture.
+// Soft matte clay material: hand-pressed normal + kneaded albedo + roughness
+// variation, all from the shared procedural plasticine textures.
 function clayMat(opts = {}) {
   return new THREE.MeshStandardMaterial({
-    roughness: 0.92,
+    roughness: 0.8,
     metalness: 0.0,
     envMapIntensity: 0.35,
     normalMap: clayNormalTexture(),
     normalScale: new THREE.Vector2(0.22, 0.22),
+    roughnessMap: clayRoughnessTexture(),
+    map: clayAlbedoTexture(),
     ...opts,
   });
 }
@@ -178,7 +182,7 @@ export class Props {
         greens: ['#e8f0f4', '#d4e4ec', '#cfe0e8', '#bcd4dd'],
       };
       case 'cactus': return { // saguaro: a tall body flanked by two arm columns
-        scale: [1.3, 1.1], wind: 0, trunk: null,
+        scale: [1.3, 1.1], wind: 0, trunk: null, foliageAmp: 0.02,
         foliage: mergeGeometries([
           cap(0.22, 1.4, 0, 0.9, 0),
           cap(0.11, 0.7, -0.32, 1.15, 0, 5),
@@ -226,6 +230,10 @@ export class Props {
     if (n === 0) return;
     const col = new THREE.Color();
 
+    // Hand-mold the perfect primitives into lumpy clay (once per archetype).
+    arch.foliage = moldGeometry(arch.foliage, { amp: arch.foliageAmp ?? 0.05, freq: 2.2, seed: this.rng() * 1000 });
+    if (arch.trunk) arch.trunk = moldGeometry(arch.trunk, { amp: 0.02, freq: 2.6, seed: this.rng() * 1000 });
+
     let trunk = null;
     if (arch.trunk) {
       const trunkMat = clayMat({ color: arch.trunkColor || '#8a5a3b', roughness: 1 });
@@ -248,7 +256,8 @@ export class Props {
       _tmpQuat.setFromAxisAngle(up, this.rng() * Math.PI * 2); // random yaw
       _quat.premultiply(_tmpQuat);
       const s = arch.scale[0] + this.rng() * arch.scale[1];
-      _scale.set(s, s * (0.92 + this.rng() * 0.25), s);
+      // per-axis jitter → no two read as a perfect symmetric copy
+      _scale.set(s * (0.9 + this.rng() * 0.18), s * (0.92 + this.rng() * 0.25), s * (0.9 + this.rng() * 0.18));
       _mat4.compose(_pos, _quat, _scale);
       if (trunk) trunk.setMatrixAt(i, _mat4);
       foliage.setMatrixAt(i, _mat4);
@@ -326,7 +335,7 @@ export class Props {
     const stemMat = clayMat({ color: '#4a9a4a' });
     const stems = new THREE.InstancedMesh(stemGeo, stemMat, n);
 
-    const headGeo = new THREE.IcosahedronGeometry(0.12, 0);
+    const headGeo = moldGeometry(new THREE.IcosahedronGeometry(0.12, 1), { amp: 0.018, freq: 6, seed: 3 });
     const headMat = clayMat({ vertexColors: true, emissiveIntensity: 0.2 });
     const heads = new THREE.InstancedMesh(headGeo, headMat, n);
     const colors = new Float32Array(n * 3);
@@ -360,8 +369,9 @@ export class Props {
     const places = this._placements(CONFIG.props.grass, { maxElev: 0.55, maxSlope: 0.4, biomes: new Set(['grassland', 'forest']) });
     const n = places.length;
     // a tuft = a tiny squished cone
-    const geo = new THREE.ConeGeometry(0.08, 0.32, 4);
+    let geo = new THREE.ConeGeometry(0.08, 0.32, 5);
     geo.translate(0, 0.16, 0);
+    geo = moldGeometry(geo, { amp: 0.012, freq: 7, seed: 9 });
     const mat = clayMat({ vertexColors: true, roughness: 1 });
     const grass = new THREE.InstancedMesh(geo, mat, n);
     const colors = new Float32Array(n * 3);
