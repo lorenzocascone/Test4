@@ -48,12 +48,12 @@ export class Character {
   _build() {
     const skin = this.bodyMat;
     const cloth = this.accentMat;
-    const blob = (r, amp = 0.012) => mold(new THREE.IcosahedronGeometry(r, 2), amp);
+    const blob = (r, amp = 0.012) => mold(new THREE.IcosahedronGeometry(r, 3), amp);
 
     // --- Torso: short, round, potato body (squat) --------------------------
     const torsoProfile = [
-      [0.02, 0.00], [0.27, 0.03], [0.40, 0.16], [0.43, 0.34],
-      [0.37, 0.52], [0.27, 0.64], [0.16, 0.72],
+      [0.02, 0.00], [0.25, 0.03], [0.37, 0.16], [0.40, 0.34],
+      [0.35, 0.52], [0.26, 0.64], [0.16, 0.72],
     ].map((p) => new THREE.Vector2(p[0], p[1]));
     this.body = new THREE.Mesh(mold(new THREE.LatheGeometry(torsoProfile, 22), 0.016), skin);
     this.body.position.y = 0.44;          // hips ~0.44 → shoulders ~1.16
@@ -153,7 +153,7 @@ export class Character {
       elbow.add(fore, hand);
       shoulder.add(elbow);
 
-      shoulder.position.set(side * 0.4, 1.05, 0);
+      shoulder.position.set(side * 0.42, 1.05, 0);
       return { shoulder, elbow };
     };
     const aL = buildArm(-1), aR = buildArm(1);
@@ -164,7 +164,7 @@ export class Character {
     // don't read as disconnected.
     [-1, 1].forEach((side) => {
       const d = new THREE.Mesh(blob(0.15), skin);
-      d.position.set(side * 0.37, 1.05, 0); d.castShadow = true;
+      d.position.set(side * 0.39, 1.05, 0); d.castShadow = true;
       this.rig.add(d);
     });
 
@@ -281,8 +281,8 @@ export class Character {
     const idle = Math.sin(elapsed * 1.6) * 0.06 * (1 - amp);
     this.armL.rotation.x = -sw * 0.5 * amp + idle;
     this.armR.rotation.x = sw * 0.5 * amp - idle;
-    this.armL.rotation.z = 0.58;
-    this.armR.rotation.z = -0.58;
+    this.armL.rotation.z = -0.5;   // splay OUT (positive z swung them inward → clipped)
+    this.armR.rotation.z = 0.5;
     this._elbowL.rotation.x = -(0.3 + Math.max(0, -sw) * 0.55 * amp); // bend forward
     this._elbowR.rotation.x = -(0.3 + Math.max(0, sw) * 0.55 * amp);
 

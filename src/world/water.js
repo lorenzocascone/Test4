@@ -51,11 +51,14 @@ export class Water {
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-           // soft lighter-blue "clay" streaks that drift slowly — a plasticine
-           // shimmer, not a glowing sparkle.
-           float streak = sin(vWorldDir.y * 26.0 + vWorldDir.x * 8.0 + uTime * 0.4);
-           streak = smoothstep(0.55, 0.95, streak);
-           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.78, 0.96), streak * 0.55);`
+           // thin lighter-blue wobbly lines rippling across the surface — a
+           // plasticine "shimmer", like ripple lines pressed into clay.
+           float u = (vWorldDir.x + vWorldDir.z) * 7.0
+                   + sin(vWorldDir.y * 9.0 + uTime * 0.6) * 0.8
+                   + sin((vWorldDir.x - vWorldDir.z) * 6.0 - uTime * 0.45) * 0.8;
+           float tri = abs(fract(u + uTime * 0.12) - 0.5) * 2.0; // 0..1
+           float line = smoothstep(0.8, 0.97, tri);              // thin crests
+           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.56, 0.85, 0.99), line * 0.6);`
         );
     };
 

@@ -6,7 +6,7 @@ export const CONFIG = {
   // --- planet --------------------------------------------------------------
   planet: {
     radius: 32,           // base sea-level-ish radius (bigger world, smaller-feeling player)
-    detail: 60,           // icosphere subdivisions (higher = smoother, heavier)
+    detail: 72,           // icosphere subdivisions (higher = smoother, cleaner edges)
     maxElevation: 9.0,    // how far land rises above the base radius (dramatic relief)
     seaLevel: 0.2,        // fraction of maxElevation that counts as water (a clear ocean)
     elevationPower: 1.5,  // >1 carves valleys & sharpens peaks (less "flat")
