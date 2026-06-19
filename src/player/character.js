@@ -153,7 +153,7 @@ export class Character {
       elbow.add(fore, hand);
       shoulder.add(elbow);
 
-      shoulder.position.set(side * 0.36, 1.05, 0);
+      shoulder.position.set(side * 0.4, 1.05, 0);
       return { shoulder, elbow };
     };
     const aL = buildArm(-1), aR = buildArm(1);
@@ -164,7 +164,7 @@ export class Character {
     // don't read as disconnected.
     [-1, 1].forEach((side) => {
       const d = new THREE.Mesh(blob(0.15), skin);
-      d.position.set(side * 0.33, 1.05, 0); d.castShadow = true;
+      d.position.set(side * 0.37, 1.05, 0); d.castShadow = true;
       this.rig.add(d);
     });
 
@@ -281,8 +281,8 @@ export class Character {
     const idle = Math.sin(elapsed * 1.6) * 0.06 * (1 - amp);
     this.armL.rotation.x = -sw * 0.5 * amp + idle;
     this.armR.rotation.x = sw * 0.5 * amp - idle;
-    this.armL.rotation.z = 0.42;
-    this.armR.rotation.z = -0.42;
+    this.armL.rotation.z = 0.58;
+    this.armR.rotation.z = -0.58;
     this._elbowL.rotation.x = -(0.3 + Math.max(0, -sw) * 0.55 * amp); // bend forward
     this._elbowR.rotation.x = -(0.3 + Math.max(0, sw) * 0.55 * amp);
 

@@ -48,7 +48,7 @@ export class Clouds {
       // Random orbital plane: pick an axis and an initial angle.
       const axis = randomDirection(rng);
       const radius = baseR + rng() * 4;
-      const speed = (0.02 + rng() * 0.05) * (rng() > 0.5 ? 1 : -1);
+      const speed = (0.006 + rng() * 0.016) * (rng() > 0.5 ? 1 : -1); // slow drift
       const angle = rng() * Math.PI * 2;
       // a reference vector perpendicular to axis
       let ref = new THREE.Vector3(0, 1, 0).cross(axis);
