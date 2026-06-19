@@ -48,145 +48,136 @@ export class Character {
   _build() {
     const skin = this.bodyMat;
     const cloth = this.accentMat;
+    const blob = (r, amp = 0.012) => mold(new THREE.IcosahedronGeometry(r, 2), amp);
 
-    // --- Torso: a paunchy, slightly hunched goblin belly (lathe profile) ----
+    // --- Torso: short, round, potato body (squat) --------------------------
     const torsoProfile = [
-      [0.02, 0.00], [0.30, 0.02], [0.42, 0.18], [0.40, 0.42],
-      [0.31, 0.66], [0.22, 0.82], [0.12, 0.90],
+      [0.02, 0.00], [0.27, 0.03], [0.40, 0.16], [0.43, 0.34],
+      [0.37, 0.52], [0.27, 0.64], [0.16, 0.72],
     ].map((p) => new THREE.Vector2(p[0], p[1]));
-    const torsoGeo = mold(new THREE.LatheGeometry(torsoProfile, 18), 0.018);
-    this.body = new THREE.Mesh(torsoGeo, skin);
-    this.body.position.y = 0.62;
-    this.body.rotation.x = 0.12;        // slight forward hunch
+    this.body = new THREE.Mesh(mold(new THREE.LatheGeometry(torsoProfile, 22), 0.016), skin);
+    this.body.position.y = 0.44;          // hips ~0.44 → shoulders ~1.16
+    this.body.rotation.x = 0.05;          // gentle slump
     this.body.castShadow = true;
     this.rig.add(this.body);
 
-    // Loincloth around the hips (accent / clothing colour)
-    const cloth1 = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.40, 0.34, 12), cloth);
-    cloth1.position.y = 0.6;
-    cloth1.castShadow = true;
+    // Loincloth + a soft neck that joins head to body.
+    const cloth1 = new THREE.Mesh(mold(new THREE.CylinderGeometry(0.3, 0.4, 0.3, 18), 0.008), cloth);
+    cloth1.position.y = 0.5; cloth1.castShadow = true;
     this.rig.add(cloth1);
-    // A simple shoulder strap across the chest
-    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.05, 6, 16), cloth);
-    strap.position.set(0, 1.12, 0);
-    strap.rotation.set(1.3, 0, 0.5);
-    this.rig.add(strap);
+    const neck = new THREE.Mesh(blob(0.2), skin);
+    neck.scale.set(1, 0.7, 1); neck.position.y = 1.22; neck.castShadow = true;
+    this.rig.add(neck);
 
-    // --- Head group (carries face features + hat, bobs while breathing) -----
+    // --- Head: a big, egg-ish skull with cheeks (not a bare sphere) --------
     this.head = new THREE.Group();
-    this.head.position.y = 1.72;
+    this.head.position.y = 1.5;
     this.rig.add(this.head);
-    this.headBaseY = 1.72;
+    this.headBaseY = 1.5;
 
-    const skullGeo = mold(new THREE.IcosahedronGeometry(0.42, 3), 0.02);
-    const skull = new THREE.Mesh(skullGeo, skin);
-    skull.scale.set(1.05, 0.95, 1.0);
+    const skull = new THREE.Mesh(blob(0.52, 0.018), skin);
+    skull.scale.set(1.06, 1.0, 1.02);
     skull.castShadow = true;
     this.head.add(skull);
-    // Jaw — pushes the lower face forward for an underbite
-    const jaw = new THREE.Mesh(mold(new THREE.IcosahedronGeometry(0.3, 2), 0.015), skin);
-    jaw.scale.set(1.0, 0.6, 1.05);
-    jaw.position.set(0, -0.22, 0.08);
-    this.head.add(jaw);
-
-    // Pointy goblin ears
-    const earGeo = new THREE.ConeGeometry(0.12, 0.5, 6);
-    const earL = new THREE.Mesh(earGeo, skin);
-    const earR = new THREE.Mesh(earGeo, skin);
-    earL.position.set(-0.42, 0.06, -0.04); earL.rotation.set(-0.3, 0, 1.15);
-    earR.position.set(0.42, 0.06, -0.04); earR.rotation.set(-0.3, 0, -1.15);
-    earL.castShadow = true; earR.castShadow = true;
-    this.head.add(earL, earR);
-
-    // Big hooked nose
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 6), skin);
-    nose.position.set(0, -0.04, 0.36);
-    nose.rotation.x = Math.PI / 2 + 0.5;
-    this.head.add(nose);
-
-    // Heavy brow ridge for a scowl
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.1, 0.12), skin);
-    brow.position.set(0, 0.14, 0.3);
-    brow.rotation.x = -0.2;
+    // round cheeks fill out the lower face
+    const cheekL = new THREE.Mesh(blob(0.22), skin); cheekL.position.set(-0.26, -0.16, 0.2);
+    const cheekR = new THREE.Mesh(blob(0.22), skin); cheekR.position.set(0.26, -0.16, 0.2);
+    cheekL.castShadow = cheekR.castShadow = true;
+    this.head.add(cheekL, cheekR);
+    // soft rounded brow ridge
+    const brow = new THREE.Mesh(blob(0.16), skin);
+    brow.scale.set(2.1, 0.55, 0.7); brow.position.set(0, 0.17, 0.34);
     this.head.add(brow);
 
-    // Eyes — yellow sclera + dark pupil, grouped so they can blink
+    // Short, rounded goblin ears (a soft point, not a sharp cone).
+    const ear = () => { const e = new THREE.Mesh(blob(0.15), skin); e.castShadow = true; return e; };
+    const earL = ear(), earR = ear();
+    earL.scale.set(0.55, 1.1, 0.4); earL.position.set(-0.52, 0.1, -0.02); earL.rotation.z = 0.5;
+    earR.scale.set(0.55, 1.1, 0.4); earR.position.set(0.52, 0.1, -0.02); earR.rotation.z = -0.5;
+    this.head.add(earL, earR);
+
+    // Soft potato nose (a rounded blob, not a cone).
+    const nose = new THREE.Mesh(blob(0.14), skin);
+    nose.scale.set(0.95, 0.85, 1.15); nose.position.set(0, -0.04, 0.46);
+    nose.castShadow = true;
+    this.head.add(nose);
+
+    // Eyes — yellow sclera + dark pupil, grouped so they can blink.
     const scleraMat = new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 0.4, emissive: '#5a4000', emissiveIntensity: 0.3 });
     const makeEye = (x) => {
       const g = new THREE.Group();
-      const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), scleraMat);
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), this.eyeMat);
-      pupil.position.z = 0.07;
-      g.add(sclera, pupil);
-      g.position.set(x, 0.04, 0.3);
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 14), scleraMat));
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), this.eyeMat);
+      pupil.position.z = 0.08;
+      g.add(pupil);
+      g.position.set(x, 0.05, 0.4);
       return g;
     };
-    this.eyeL = makeEye(-0.15);
-    this.eyeR = makeEye(0.15);
+    this.eyeL = makeEye(-0.18);
+    this.eyeR = makeEye(0.18);
     this.head.add(this.eyeL, this.eyeR);
 
-    // Mouth + two little tusks (underbite grin)
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.05), this.eyeMat);
-    mouth.position.set(0, -0.2, 0.34);
+    // Soft mouth + two tiny rounded tusks (gentle underbite).
+    const mouth = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.18, 3, 6), this.eyeMat);
+    mouth.rotation.z = Math.PI / 2; mouth.position.set(0, -0.26, 0.42);
     this.head.add(mouth);
     const toothMat = new THREE.MeshStandardMaterial({ color: '#fffdf0', roughness: 0.5 });
-    const toothGeo = new THREE.ConeGeometry(0.04, 0.12, 5);
-    const tuskL = new THREE.Mesh(toothGeo, toothMat);
-    const tuskR = new THREE.Mesh(toothGeo, toothMat);
-    tuskL.position.set(-0.07, -0.14, 0.35); tuskR.position.set(0.07, -0.14, 0.35);
+    const tooth = () => new THREE.Mesh(mold(new THREE.IcosahedronGeometry(0.045, 2), 0.004), toothMat);
+    const tuskL = tooth(), tuskR = tooth();
+    tuskL.position.set(-0.07, -0.2, 0.44); tuskR.position.set(0.07, -0.2, 0.44);
     this.head.add(tuskL, tuskR);
 
-    // --- Arms: upper arm + forearm hinged at an elbow, hand at the wrist ------
+    // --- Arms: SHORT & chunky, shoulders joined by a deltoid blob ----------
     const buildArm = (side) => {
-      const shoulder = new THREE.Group();            // shoulder pivot
-      const upperLen = 0.4;
-      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, upperLen, 3, 8), skin);
-      upper.position.y = -upperLen / 2;
-      upper.castShadow = true;
+      const shoulder = new THREE.Group();
+      const upperLen = 0.14;
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, upperLen, 4, 10), skin);
+      upper.position.y = -0.18; upper.castShadow = true;
       shoulder.add(upper);
 
-      const elbow = new THREE.Group();               // elbow pivot at upper-arm end
-      elbow.position.y = -upperLen;
-      const foreLen = 0.38;
-      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, foreLen, 3, 8), skin);
-      fore.position.y = -foreLen / 2;
-      fore.castShadow = true;
-      const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 1), skin);
-      hand.position.y = -foreLen - 0.05;
-      hand.castShadow = true;
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.34;
+      const foreLen = 0.12;
+      const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, foreLen, 4, 10), skin);
+      fore.position.y = -0.13; fore.castShadow = true;
+      const hand = new THREE.Mesh(blob(0.17), skin);
+      hand.scale.set(1, 0.9, 0.9); hand.position.y = -0.32; hand.castShadow = true;
       elbow.add(fore, hand);
       shoulder.add(elbow);
 
-      shoulder.position.set(side * 0.42, 1.3, 0);
+      shoulder.position.set(side * 0.32, 1.04, 0);
       return { shoulder, elbow };
     };
     const aL = buildArm(-1), aR = buildArm(1);
     this.armL = aL.shoulder; this._elbowL = aL.elbow;
     this.armR = aR.shoulder; this._elbowR = aR.elbow;
     this.rig.add(this.armL, this.armR);
+    // deltoid blobs (static on the torso) bridge shoulder → body so the arms
+    // don't read as disconnected.
+    [-1, 1].forEach((side) => {
+      const d = new THREE.Mesh(blob(0.21), skin);
+      d.position.set(side * 0.3, 1.06, 0); d.castShadow = true;
+      this.rig.add(d);
+    });
 
-    // --- Legs: thigh + shin hinged at a knee, flat foot at the ankle ----------
+    // --- Legs: little stubby legs with rounded feet ------------------------
     const buildLeg = (side) => {
-      const hip = new THREE.Group();                 // hip pivot
-      const thighLen = 0.3;
-      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, thighLen, 3, 8), skin);
-      thigh.position.y = -thighLen / 2;
-      thigh.castShadow = true;
+      const hip = new THREE.Group();
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.1, 4, 10), skin);
+      thigh.position.y = -0.13; thigh.castShadow = true;
       hip.add(thigh);
 
-      const knee = new THREE.Group();                // knee pivot at thigh end
-      knee.position.y = -thighLen;
-      const shinLen = 0.24;
-      const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, shinLen, 3, 8), skin);
-      shin.position.y = -shinLen / 2;
-      shin.castShadow = true;
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.34), skin);
-      foot.position.set(0, -shinLen - 0.04, 0.08);
-      foot.castShadow = true;
+      const knee = new THREE.Group();
+      knee.position.y = -0.2;
+      const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.06, 4, 10), skin);
+      shin.position.y = -0.1; shin.castShadow = true;
+      const foot = new THREE.Mesh(mold(new THREE.CapsuleGeometry(0.12, 0.13, 4, 8), 0.01), skin);
+      foot.rotation.z = Math.PI / 2; foot.scale.set(1, 1, 0.85);
+      foot.position.set(0, -0.2, 0.05); foot.castShadow = true;
       knee.add(shin, foot);
       hip.add(knee);
 
-      hip.position.set(side * 0.2, 0.64, 0);
+      hip.position.set(side * 0.17, 0.48, 0);
       return { hip, knee };
     };
     const lL = buildLeg(-1), lR = buildLeg(1);
@@ -194,10 +185,10 @@ export class Character {
     this.legR = lR.hip; this._kneeR = lR.knee;
     this.rig.add(this.legL, this.legR);
 
-    // Hat slot — seated down into the head crown so hats look worn (they
-    // intersect the head) rather than perched on the topmost point.
+    // Hat slot — seated down into the (bigger) head crown; scaled up to fit it.
     this.hatSlot = new THREE.Group();
-    this.hatSlot.position.y = 0.22;
+    this.hatSlot.position.y = 0.3;
+    this.hatSlot.scale.setScalar(1.2);
     this.head.add(this.hatSlot);
 
     this._blink = 0;
