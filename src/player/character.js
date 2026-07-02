@@ -245,6 +245,16 @@ export class Character {
   update(dt, elapsed, speed, swimming = false) {
     const amp = Math.min(speed, 1);
 
+    // Stop-motion "re-posed by hand" jitter: on each animation step (dt > 0 on
+    // the 12fps stepped clock), the whole puppet settles at a fractionally
+    // different orientation, like an animator nudged it between frames.
+    if (dt > 0) {
+      this._poseJitterY = (Math.random() - 0.5) * 0.016;
+      this._poseJitterZ = (Math.random() - 0.5) * 0.016;
+    }
+    this.rig.rotation.y = this._poseJitterY || 0;
+    this.rig.rotation.z = this._poseJitterZ || 0;
+
     if (swimming) {
       // Swim pose: body pitched forward and bobbing, arms doing an alternating
       // crawl stroke, legs flutter-kicking. Animates even while floating still.

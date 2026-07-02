@@ -24,7 +24,7 @@ export class Controller {
 
     this.facing = this.heading.clone();   // where the body points (slerped)
     this.camYaw = 0;                        // extra camera yaw from the mouse
-    this.camPitch = 0.18;                   // camera pitch (radians)
+    this.camPitch = 0.3;                    // camera pitch — looking down at the set
     this.jumpVel = 0;
     this.altitude = 0;                      // height above the takeoff ground (can go negative)
     this.grounded = true;
