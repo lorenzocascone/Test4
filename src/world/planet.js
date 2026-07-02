@@ -7,13 +7,15 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG } from '../config.js';
+import { clayNormalTexture } from '../utils/textures.js';
 import { Noise } from '../utils/noise.js';
 import { clamp, smoothstep } from '../utils/math.js';
 
 const c = (hex) => new THREE.Color(hex);
 
 export class Planet {
-  constructor(seed = 1337) {
+  constructor(seed = 1337, { triplanarClay = false } = {}) {
+    this.triplanarClay = triplanarClay;
     this.cfg = CONFIG.planet;
     this.noise = new Noise(seed);
     this.warpNoise = new Noise(seed ^ 0x9e3779b9);
@@ -168,6 +170,64 @@ export class Planet {
     if (elev > 0.86) color.copy(p.snow);
   }
 
+  // Triplanar clay fingerprints for the terrain. The planet has no UVs, so we
+  // sample the shared clay normal map on the three world planes (the mesh sits
+  // unrotated at the origin, so object space == world space) and perturb the
+  // surface normal with a UDN-style blend — the entire ground reads as pressed
+  // clay under the key light.
+  _applyTriplanarClay(mat) {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uClayN = { value: clayNormalTexture() };
+      shader.uniforms.uClayScale = { value: 0.55 };
+      shader.uniforms.uClayStrength = { value: 0.35 };
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           varying vec3 vTriPos;
+           varying vec3 vTriNormal;`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+           vTriPos = position;
+           vTriNormal = normal;`
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+           uniform sampler2D uClayN;
+           uniform float uClayScale;
+           uniform float uClayStrength;
+           varying vec3 vTriPos;
+           varying vec3 vTriNormal;`
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+           {
+             vec3 gN = normalize(vTriNormal);
+             vec3 bw = pow(abs(gN), vec3(4.0));
+             bw /= (bw.x + bw.y + bw.z);
+             vec3 p = vTriPos * uClayScale;
+             vec3 tnx = texture2D(uClayN, p.zy).xyz * 2.0 - 1.0;
+             vec3 tny = texture2D(uClayN, p.xz).xyz * 2.0 - 1.0;
+             vec3 tnz = texture2D(uClayN, p.xy).xyz * 2.0 - 1.0;
+             // UDN: each plane's tangent-space xy perturbs the two axes of that plane
+             vec3 perturb = vec3(0.0, tnx.y, tnx.x) * bw.x
+                          + vec3(tny.x, 0.0, tny.y) * bw.y
+                          + vec3(tnz.x, tnz.y, 0.0) * bw.z;
+             vec3 objN = normalize(gN + perturb * uClayStrength);
+             normal = normalize((viewMatrix * vec4(objN, 0.0)).xyz);
+           }`
+        );
+    };
+    mat.customProgramCacheKey = () => 'planet-triplanar-clay';
+  }
+
   _build() {
     let geo = new THREE.IcosahedronGeometry(this.cfg.radius, this.cfg.detail);
     geo.deleteAttribute('normal');
@@ -207,6 +267,7 @@ export class Planet {
       metalness: 0.0,
       envMapIntensity: 0.35,
     });
+    if (this.triplanarClay) this._applyTriplanarClay(mat);
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;

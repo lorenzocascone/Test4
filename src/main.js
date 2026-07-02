@@ -10,7 +10,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
@@ -31,6 +30,8 @@ import { Controller } from './player/controller.js';
 import { HUD } from './ui/hud.js';
 import { Customizer } from './ui/customize.js';
 import { updateSun } from './utils/shaders.js';
+import { createTiltShift } from './utils/tiltshift.js';
+import { clayNormalTexture, clayAlbedoTexture } from './utils/textures.js';
 
 // Cozy storybook grade: warm tint, gentle desaturation, soft vignette, faint
 // film grain — the Pokémon-Concierge warmth on top of the vibrant biomes.
@@ -62,6 +63,9 @@ const GradeShader = {
       c.rgb = mix(vec3(l), c.rgb, uSat);
       // contrast S-curve around mid grey
       c.rgb = (c.rgb - 0.5) * uContrast + 0.5;
+      // lifted blacks + soft highlight rolloff — the filmic stop-motion warmth
+      c.rgb = c.rgb * 0.94 + 0.035;
+      c.rgb = c.rgb / (1.0 + max(c.rgb - vec3(1.0), vec3(0.0)) * 0.6);
       // soft vignette
       vec2 d = vUv - 0.5;
       float vig = smoothstep(0.9, 0.22, dot(d, d) * 2.4);
@@ -115,7 +119,7 @@ class Game {
     // VSM gives soft, blurred shadow edges (no pixel-stairs) on desktop.
     this.renderer.shadowMap.type = this.isMobile ? THREE.PCFSoftShadowMap : THREE.VSMShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.getElementById('app').appendChild(this.renderer.domElement);
   }
@@ -145,7 +149,7 @@ class Game {
     // Lighter terrain mesh on mobile (same shape, fewer facets) to keep it smooth.
     if (this.isMobile) CONFIG.planet.detail = 46;
     await step(0.1, 'Sculpting continents…');
-    this.planet = new Planet(seed);
+    this.planet = new Planet(seed, { triplanarClay: !this.isMobile });
     this.scene.add(this.planet.mesh);
 
     await step(0.35, 'Filling the seas…');
@@ -190,11 +194,10 @@ class Game {
     if (!this.isMobile) {
       // SSAO grounds objects + darkens clay-seam crevices.
       await this._addAO(w, h);
-      // Extreme tilt-shift: razor-sharp subject in a sea of creamy bokeh.
-      this.bokeh = new BokehPass(this.scene, this.camera, {
-        focus: CONFIG.camera.distance, aperture: 0.0022, maxblur: 0.012, width: w, height: h,
-      });
-      this.composer.addPass(this.bokeh);
+      // TRUE tilt-shift: a sharp horizontal focus band with blur ramping toward
+      // the top and bottom of frame — the miniature-photography signature.
+      this.tiltshift = createTiltShift();
+      for (const p of this.tiltshift.passes) this.composer.addPass(p);
     }
 
     // Gentle bloom.
@@ -359,7 +362,6 @@ class Game {
     this.renderer.setSize(w, h);
     if (this.composer) this.composer.setSize(w, h);
     if (this.bloom) this.bloom.setSize(w, h);
-    if (this.bokeh) this.bokeh.setSize(w, h);
   }
 
   _loop() {
@@ -373,6 +375,17 @@ class Game {
     let animDt = 0;
     while (this._animAccum >= STEP) { this._animAccum -= STEP; this._animElapsed = (this._animElapsed || 0) + STEP; animDt += STEP; }
     const animElapsed = this._animElapsed || 0;
+
+    // "Clay boil": on each stop-motion step, nudge the shared clay textures a
+    // hair so every surface's fingerprints subtly re-form — as if hands touched
+    // the clay between frames.
+    if (animDt > 0) {
+      const nt = clayNormalTexture(), at = clayAlbedoTexture();
+      nt.center.set(0.5, 0.5);
+      nt.offset.set((Math.random() - 0.5) * 0.006, (Math.random() - 0.5) * 0.006);
+      nt.rotation = (Math.random() - 0.5) * 0.02;
+      at.offset.set((Math.random() - 0.5) * 0.004, (Math.random() - 0.5) * 0.004);
+    }
 
     // world updates — wind sway judders, water/clouds/sun stay smooth
     this.water.update(dt, this.elapsed);
@@ -389,7 +402,12 @@ class Game {
       this.controller.update(dt, this.elapsed, animDt, animElapsed);
       this.collectibles.update(animDt, animElapsed, this.controller.worldPosition);
       this._updateRimLight();
-      if (this.bokeh?.uniforms?.focus) this.bokeh.uniforms.focus.value = this.camera.position.distanceTo(this.controller.worldPosition);
+      if (this.tiltshift) {
+        // keep the sharp focus band pinned to the goblin's screen position
+        this._ndc = this._ndc || new THREE.Vector3();
+        this._ndc.copy(this.controller.worldPosition).project(this.camera);
+        this.tiltshift.setFocus(THREE.MathUtils.clamp(this._ndc.y * 0.5 + 0.5, 0.18, 0.82));
+      }
       // periodic HUD time refresh
       this._todAccum = (this._todAccum || 0) + dt;
       if (this._todAccum > 0.5) {
@@ -397,13 +415,13 @@ class Game {
         this.hud.setTime(this.dayNight.label(), this.dayNight.dayCount);
       }
     } else {
-      // start-screen slow orbit of the planet (pulled back for the low FOV)
-      this._introAngle += dt * 0.12;
+      // start-screen: a slow, slightly-elevated turntable of the "set"
+      this._introAngle += dt * 0.06;
       const r = CONFIG.planet.radius + 95;
-      this.camera.position.set(Math.cos(this._introAngle) * r, 30 + Math.sin(this._introAngle * 0.6) * 12, Math.sin(this._introAngle) * r);
+      this.camera.position.set(Math.cos(this._introAngle) * r, 42 + Math.sin(this._introAngle * 0.6) * 8, Math.sin(this._introAngle) * r);
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(0, 0, 0);
-      if (this.bokeh?.uniforms?.focus) this.bokeh.uniforms.focus.value = this.camera.position.length();
+      if (this.tiltshift) this.tiltshift.setFocus(0.5); // band across the planet's middle
       this.collectibles.update(animDt, animElapsed, null);
     }
 
